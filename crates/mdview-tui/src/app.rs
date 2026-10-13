@@ -41,6 +41,7 @@ const HELP: &[(&str, &str)] = &[
     ("Backspace", "go back"),
     ("t", "table of contents"),
     ("f", "file picker"),
+    ("y / click on code", "copy a code block"),
     ("o", "open in the browser (full-fidelity diagrams)"),
     ("i", "switch image mode (kitty / text)"),
     ("c", "switch light / dark colours"),
@@ -188,6 +189,46 @@ fn open_external(target: &str) -> std::io::Result<()> {
         .stderr(Stdio::null())
         .spawn()
         .map(|_| ())
+}
+
+/// Puts `text` on the system clipboard: through a clipboard tool when one is
+/// installed, and through the terminal (OSC 52), which also works over SSH.
+fn copy_to_clipboard(text: &str) {
+    use base64::Engine as _;
+    use std::io::Write as _;
+
+    let tools: &[(&str, &[&str], &str)] = &[
+        ("wl-copy", &[], "WAYLAND_DISPLAY"),
+        ("xclip", &["-selection", "clipboard"], "DISPLAY"),
+        ("xsel", &["--clipboard", "--input"], "DISPLAY"),
+        ("pbcopy", &[], ""),
+        ("clip.exe", &[], ""),
+    ];
+    for (program, args, needs) in tools {
+        if !needs.is_empty() && std::env::var_os(needs).is_none() {
+            continue;
+        }
+        let child = Command::new(program)
+            .args(*args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        let Ok(mut child) = child else {
+            continue;
+        };
+        let written = child
+            .stdin
+            .take()
+            .is_some_and(|mut stdin| stdin.write_all(text.as_bytes()).is_ok());
+        if written && child.wait().is_ok_and(|status| status.success()) {
+            break;
+        }
+    }
+    let encoded = base64::engine::general_purpose::STANDARD.encode(text);
+    let mut out = stdout();
+    let _ = write!(out, "\x1b]52;c;{encoded}\x07");
+    let _ = out.flush();
 }
 
 fn fuzzy_match(candidate: &str, filter: &str) -> bool {
@@ -526,6 +567,34 @@ impl App {
         }
     }
 
+    fn copy_code(&mut self, index: usize) {
+        let Some(code) = self.doc.as_ref().and_then(|d| d.rendered.codes.get(index)) else {
+            return;
+        };
+        copy_to_clipboard(code);
+        let lines = code.lines().count();
+        self.message = Some(format!(
+            "copied {lines} line{}",
+            if lines == 1 { "" } else { "s" }
+        ));
+    }
+
+    /// Copies the first code block that is on screen.
+    fn copy_visible_code(&mut self) {
+        let code = self.doc.as_ref().and_then(|doc| {
+            doc.rendered
+                .lines
+                .iter()
+                .skip(doc.scroll)
+                .take(self.page())
+                .find_map(|line| line.code)
+        });
+        match code {
+            Some(code) => self.copy_code(code),
+            None => self.message = Some("no code block on screen".into()),
+        }
+    }
+
     fn back(&mut self) {
         let Some((path, scroll)) = self.history.pop() else {
             self.message = Some("no earlier document".into());
@@ -715,6 +784,7 @@ impl App {
                     doc.width = 0;
                 }
             }
+            KeyCode::Char('y') => self.copy_visible_code(),
             KeyCode::Char('r') => {
                 self.reload();
                 self.message = Some("reloaded".into());
@@ -808,9 +878,12 @@ impl App {
                         .find(|hit| column >= hit.start && column < hit.end)
                         .map(|hit| hit.link)
                 });
+                let code = doc.rendered.lines.get(line).and_then(|l| l.code);
                 if let Some(link) = link {
                     self.message = None;
                     self.follow(link);
+                } else if let Some(code) = code {
+                    self.copy_code(code);
                 }
             }
             Mode::Picker | Mode::Toc if step != 0 => {
@@ -867,6 +940,7 @@ impl App {
                 ("f", "Files"),
                 ("t", "Contents"),
                 ("/", "Search"),
+                ("y", "Copy code"),
                 ("o", "Browser"),
                 ("Tab", "Link"),
                 ("Enter", "Follow"),

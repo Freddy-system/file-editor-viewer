@@ -22,6 +22,8 @@ pub const DEFAULT_CELL: (u32, u32) = (10, 20);
 /// Diagrams are rasterized at this many pixels per logical pixel so they stay
 /// sharp on high-density screens.
 const DENSITY: f32 = 2.0;
+/// Shown on every code block; a click anywhere on the block copies it.
+const COPY_BUTTON: &str = "[ copy ] ";
 
 /// Clickable range of a line.
 #[derive(Debug, Clone)]
@@ -44,6 +46,8 @@ pub struct RLine {
     pub spans: Vec<Span<'static>>,
     pub links: Vec<LinkHit>,
     pub image: Option<ImageCell>,
+    /// Index into [`Rendered::codes`] when the line belongs to a code block.
+    pub code: Option<usize>,
 }
 
 impl RLine {
@@ -100,6 +104,8 @@ pub struct Rendered {
     pub anchors: HashMap<String, usize>,
     /// Level, title and line of each heading.
     pub toc: Vec<(u8, String, usize)>,
+    /// Source of every code block, for copying.
+    pub codes: Vec<String>,
 }
 
 /// Long-lived rendering resources: engines, syntax definitions and the
@@ -587,15 +593,21 @@ impl Layouter<'_> {
         let background = Style::new().bg(theme.code_bg);
         let inner = width.saturating_sub(2).max(1) as usize;
         let mut lines = Vec::new();
-        let label = label.unwrap_or(lang);
-        if !label.is_empty() {
-            let mut header = RLine::from_spans(vec![Span::styled(
-                format!(" {label}"),
-                background.fg(theme.dim).add_modifier(Modifier::ITALIC),
-            )]);
-            header.pad_to(width, background);
-            lines.push(header);
-        }
+        // Header: the language on the left, a copy button on the right.
+        let label = truncate(
+            &format!(" {}", label.unwrap_or(lang)),
+            (width as usize).saturating_sub(COPY_BUTTON.width()),
+        );
+        let mut header = RLine::from_spans(vec![Span::styled(
+            label,
+            background.fg(theme.dim).add_modifier(Modifier::ITALIC),
+        )]);
+        header.pad_to(width.saturating_sub(COPY_BUTTON.width() as u16), background);
+        header
+            .spans
+            .push(Span::styled(COPY_BUTTON, background.fg(theme.link)));
+        header.pad_to(width, background);
+        lines.push(header);
         let syntax = self
             .assets
             .syntaxes
@@ -640,6 +652,11 @@ impl Layouter<'_> {
                 }
             }
             flush(&mut row, &mut lines);
+        }
+        let index = self.out.codes.len();
+        self.out.codes.push(code.to_string());
+        for line in &mut lines {
+            line.code = Some(index);
         }
         lines
     }
@@ -1317,6 +1334,11 @@ mod tests {
             Graphics::Text,
         );
         assert!(rendered.lines.len() >= 3);
+        assert!(rendered.lines[0].text().contains("rust"));
+        assert!(rendered.lines[0].text().contains("[ copy ]"));
+        assert!(rendered.lines.iter().all(|l| l.code == Some(0)));
+        assert_eq!(rendered.codes.len(), 1);
+        assert!(rendered.codes[0].starts_with("fn main()"));
         assert!(
             rendered.lines.iter().all(|l| l.width() == 24),
             "{:#?}",

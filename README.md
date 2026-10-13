@@ -66,6 +66,7 @@ description = "vista previa de Markdown"
 | `Retroceso` | Volver al documento anterior |
 | `t` | Índice del documento |
 | `f` | Selector de archivos |
+| `y`, clic sobre un bloque de código | Copiar el bloque al portapapeles |
 | `o` | Abrir en el navegador |
 | `i` | Cambiar modo de imágenes (`kitty` / `text`) |
 | `c` | Colores claros / oscuros |
