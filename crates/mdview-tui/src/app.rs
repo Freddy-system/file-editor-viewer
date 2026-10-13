@@ -31,23 +31,39 @@ use crate::Options;
 const MAX_TEXT_WIDTH: u16 = 120;
 const MAX_LISTED_FILES: usize = 5000;
 
-const HELP: &[(&str, &str)] = &[
-    ("j k ↑ ↓ / wheel", "scroll"),
-    ("d u / space / PgUp PgDn", "half page / page"),
-    ("g G", "top / bottom"),
-    ("/  n N", "search, next / previous match"),
-    ("Tab  Shift-Tab", "next / previous link"),
-    ("Enter / click", "follow link"),
-    ("Backspace", "go back"),
-    ("t", "table of contents"),
-    ("f", "file picker"),
-    ("y / click on code", "copy a code block"),
-    ("o", "open in the browser (full-fidelity diagrams)"),
-    ("i", "switch image mode (kitty / text)"),
-    ("c", "switch light / dark colours"),
-    ("r", "reload"),
-    ("q", "quit"),
+/// Keys of the document view, shown in the help panel.
+const VIEW_KEYS: &[(&str, &str)] = &[
+    ("?", "Hide help"),
+    ("q", "Quit"),
+    ("↑↓ j k", "Scroll"),
+    ("Space d u", "Page"),
+    ("g G", "Top/End"),
+    ("/", "Search"),
+    ("n N", "Next/Prev"),
+    ("Tab", "Link"),
+    ("Enter", "Follow"),
+    ("Bksp", "Back"),
+    ("t", "Contents"),
+    ("f", "Files"),
+    ("drag", "Select+copy"),
+    ("y", "Copy code"),
+    ("Y ^A", "Copy all"),
+    ("o", "Browser"),
+    ("i", "Images"),
+    ("c", "Colours"),
+    ("r", "Reload"),
 ];
+const PICKER_KEYS: &[(&str, &str)] = &[
+    ("↑↓", "Move"),
+    ("Enter", "Open"),
+    ("Esc", "Back"),
+    ("type", "Filter"),
+];
+const TOC_KEYS: &[(&str, &str)] = &[("↑↓", "Move"), ("Enter", "Go"), ("Esc", "Close")];
+const SEARCH_KEYS: &[(&str, &str)] = &[("Enter", "Search"), ("Esc", "Cancel")];
+
+/// A position in the laid-out document: line and column.
+type Point = (usize, u16);
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 enum Mode {
@@ -55,11 +71,11 @@ enum Mode {
     Picker,
     Toc,
     Search,
-    Help,
 }
 
 struct OpenDoc {
     path: PathBuf,
+    source: String,
     doc: Document,
     rendered: Rendered,
     /// Width `rendered` was laid out for; 0 forces a new layout.
@@ -86,6 +102,11 @@ struct App {
     matches: Vec<(usize, u16, u16)>,
     /// Line and index within that line of the focused link.
     link_focus: Option<(usize, usize)>,
+    /// Where the left button went down, until it is released.
+    press: Option<Point>,
+    /// Text selected by dragging, from where the drag began to where it is.
+    selection: Option<(Point, Point)>,
+    help_open: bool,
     pending_anchor: Option<String>,
     message: Option<String>,
     server: Option<mdview_web::Server>,
@@ -121,6 +142,9 @@ pub fn run(options: Options) -> anyhow::Result<()> {
         search: String::new(),
         matches: Vec::new(),
         link_focus: None,
+        press: None,
+        selection: None,
+        help_open: false,
         pending_anchor: None,
         message: None,
         server: None,
@@ -231,6 +255,24 @@ fn copy_to_clipboard(text: &str) {
     let _ = out.flush();
 }
 
+/// The part of `text` between two display columns.
+fn slice_columns(text: &str, from: u16, to: u16) -> &str {
+    let mut column = 0u16;
+    let mut start = text.len();
+    let mut end = text.len();
+    for (index, c) in text.char_indices() {
+        if column >= from && start == text.len() {
+            start = index;
+        }
+        if column >= to {
+            end = index;
+            break;
+        }
+        column += unicode_width::UnicodeWidthChar::width(c).unwrap_or(0) as u16;
+    }
+    &text[start.min(end)..end]
+}
+
 fn fuzzy_match(candidate: &str, filter: &str) -> bool {
     let mut chars = candidate.chars().flat_map(char::to_lowercase);
     filter
@@ -306,6 +348,7 @@ impl App {
         self.doc = Some(OpenDoc {
             path: path.clone(),
             doc: mdview_core::parse(&source),
+            source,
             rendered: Rendered::default(),
             width: 0,
             scroll: 0,
@@ -328,6 +371,7 @@ impl App {
             return;
         };
         doc.doc = mdview_core::parse(&source);
+        doc.source = source;
         doc.width = 0;
         self.link_focus = None;
     }
@@ -378,6 +422,9 @@ impl App {
         };
         doc.rendered = layout(&doc.doc, &options, &mut self.assets);
         doc.width = width;
+        // Positions refer to the old layout.
+        self.selection = None;
+        self.press = None;
         let keys: Vec<u64> = doc.rendered.images.iter().map(|slot| slot.key).collect();
         let _ = self.kitty.retain(&mut stdout(), &keys);
         if let Some(anchor) = self.pending_anchor.take() {
@@ -579,6 +626,47 @@ impl App {
         ));
     }
 
+    /// Copies the whole document as Markdown source.
+    fn copy_all(&mut self) {
+        let Some(doc) = &self.doc else {
+            return;
+        };
+        copy_to_clipboard(&doc.source);
+        self.message = Some(format!(
+            "copied the whole document ({} lines)",
+            doc.source.lines().count()
+        ));
+    }
+
+    /// The selection with its ends in reading order.
+    fn selected_range(&self) -> Option<(Point, Point)> {
+        let (a, b) = self.selection?;
+        Some(if a <= b { (a, b) } else { (b, a) })
+    }
+
+    fn selected_text(&self) -> Option<String> {
+        let (start, end) = self.selected_range()?;
+        let doc = self.doc.as_ref()?;
+        let mut out = Vec::new();
+        for number in start.0..=end.0 {
+            let text = doc.rendered.lines.get(number)?.text();
+            let from = if number == start.0 { start.1 } else { 0 };
+            let to = if number == end.0 { end.1 + 1 } else { u16::MAX };
+            out.push(slice_columns(&text, from, to).trim_end().to_string());
+        }
+        let text = out.join("\n");
+        (!text.trim().is_empty()).then_some(text)
+    }
+
+    /// Document position under a screen cell, clamped to the view.
+    fn point_at(&self, column: u16, row: u16) -> Option<Point> {
+        let doc = self.doc.as_ref()?;
+        let last_row = self.view.height.checked_sub(1)?;
+        let row = row.saturating_sub(self.view.y).min(last_row);
+        let line = (doc.scroll + row as usize).min(doc.rendered.lines.len().checked_sub(1)?);
+        Some((line, column.saturating_sub(self.view.x)))
+    }
+
     /// Copies the first code block that is on screen.
     fn copy_visible_code(&mut self) {
         let code = self.doc.as_ref().and_then(|doc| {
@@ -715,7 +803,6 @@ impl App {
                 KeyCode::Char(c) => self.query.push(c),
                 _ => {}
             },
-            Mode::Help => self.mode = Mode::View,
         }
     }
 
@@ -727,7 +814,10 @@ impl App {
                 self.search.clear();
                 self.matches.clear();
                 self.link_focus = None;
+                self.selection = None;
             }
+            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => self.copy_all(),
+            KeyCode::Char('Y') => self.copy_all(),
             KeyCode::Char('j') | KeyCode::Down => self.scroll_by(1),
             KeyCode::Char('k') | KeyCode::Up => self.scroll_by(-1),
             KeyCode::Char('d') => self.scroll_by(page / 2),
@@ -789,7 +879,7 @@ impl App {
                 self.reload();
                 self.message = Some("reloaded".into());
             }
-            KeyCode::Char('?') => self.mode = Mode::Help,
+            KeyCode::Char('?') => self.help_open = !self.help_open,
             _ => {}
         }
     }
@@ -855,38 +945,13 @@ impl App {
     }
 
     fn mouse(&mut self, mouse: MouseEvent) {
-        let step = match mouse.kind {
+        let step: isize = match mouse.kind {
             MouseEventKind::ScrollDown => 3,
             MouseEventKind::ScrollUp => -3,
-            MouseEventKind::Down(MouseButton::Left) => 0,
-            _ => return,
+            _ => 0,
         };
-        match self.mode {
-            Mode::View if step != 0 => self.scroll_by(step),
-            Mode::View => {
-                let inside = mouse.row >= self.view.y
-                    && mouse.row < self.view.y + self.view.height
-                    && mouse.column >= self.view.x;
-                let Some(doc) = self.doc.as_ref().filter(|_| inside) else {
-                    return;
-                };
-                let line = doc.scroll + (mouse.row - self.view.y) as usize;
-                let column = mouse.column - self.view.x;
-                let link = doc.rendered.lines.get(line).and_then(|l| {
-                    l.links
-                        .iter()
-                        .find(|hit| column >= hit.start && column < hit.end)
-                        .map(|hit| hit.link)
-                });
-                let code = doc.rendered.lines.get(line).and_then(|l| l.code);
-                if let Some(link) = link {
-                    self.message = None;
-                    self.follow(link);
-                } else if let Some(code) = code {
-                    self.copy_code(code);
-                }
-            }
-            Mode::Picker | Mode::Toc if step != 0 => {
+        if self.mode != Mode::View {
+            if step != 0 && matches!(self.mode, Mode::Picker | Mode::Toc) {
                 let count = match self.mode {
                     Mode::Picker => self.filtered_files().len(),
                     _ => self.doc.as_ref().map_or(0, |d| d.rendered.toc.len()),
@@ -896,7 +961,67 @@ impl App {
                     .saturating_add_signed(step.signum())
                     .min(count.saturating_sub(1));
             }
+            return;
+        }
+        match mouse.kind {
+            _ if step != 0 => self.scroll_by(step),
+            MouseEventKind::Down(MouseButton::Left) => {
+                self.selection = None;
+                self.press = self.point_at(mouse.column, mouse.row);
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                // Dragging past an edge scrolls, so a selection can be
+                // longer than the screen.
+                if mouse.row <= self.view.y {
+                    self.scroll_by(-1);
+                } else if mouse.row + 1 >= self.view.y + self.view.height {
+                    self.scroll_by(1);
+                }
+                let here = self.point_at(mouse.column, mouse.row);
+                if let (Some(press), Some(here)) = (self.press, here) {
+                    if here != press || self.selection.is_some() {
+                        self.selection = Some((press, here));
+                    }
+                }
+            }
+            MouseEventKind::Up(MouseButton::Left) => {
+                let Some(press) = self.press.take() else {
+                    return;
+                };
+                if self.selection.is_some() {
+                    match self.selected_text() {
+                        Some(text) => {
+                            copy_to_clipboard(&text);
+                            self.message =
+                                Some(format!("copied {} characters", text.chars().count()));
+                        }
+                        None => self.selection = None,
+                    }
+                    return;
+                }
+                self.click(press);
+            }
             _ => {}
+        }
+    }
+
+    /// A press and release on the same cell: follow a link or copy a code
+    /// block.
+    fn click(&mut self, (line, column): Point) {
+        let Some(line) = self.doc.as_ref().and_then(|d| d.rendered.lines.get(line)) else {
+            return;
+        };
+        let link = line
+            .links
+            .iter()
+            .find(|hit| column >= hit.start && column < hit.end)
+            .map(|hit| hit.link);
+        let code = line.code;
+        if let Some(link) = link {
+            self.message = None;
+            self.follow(link);
+        } else if let Some(code) = code {
+            self.copy_code(code);
         }
     }
 
@@ -905,8 +1030,13 @@ impl App {
         if area.height < 2 || area.width < 10 {
             return;
         }
-        // Status line, plus a row of key hints when there is room for it.
-        let bars = if area.height >= 8 { 2 } else { 1 };
+        // Status line, plus the help panel while it is switched on.
+        let help = if self.help_open {
+            self.help_rows(area.width, area.height / 2)
+        } else {
+            Vec::new()
+        };
+        let bars = 1 + help.len() as u16;
         let content = Rect::new(area.x, area.y, area.width, area.height - bars);
         let status = Rect::new(area.x, content.y + content.height, area.width, 1);
         self.placements.clear();
@@ -915,66 +1045,50 @@ impl App {
         } else {
             self.draw_document(frame, content);
         }
-        match self.mode {
-            Mode::Toc => self.draw_toc(frame, content),
-            Mode::Help => self.draw_help(frame, content),
-            _ => {}
+        if self.mode == Mode::Toc {
+            self.draw_toc(frame, content);
         }
         // Terminal-drawn images sit above text, so they would cover a popup.
-        if matches!(self.mode, Mode::Toc | Mode::Help | Mode::Picker) {
+        if matches!(self.mode, Mode::Toc | Mode::Picker) {
             self.placements.clear();
         }
         self.draw_status(frame.buffer_mut(), status);
-        if bars == 2 {
-            let hints = Rect::new(area.x, status.y + 1, area.width, 1);
-            self.draw_hints(frame.buffer_mut(), hints);
+        for (n, line) in help.iter().enumerate() {
+            frame
+                .buffer_mut()
+                .set_line(area.x, status.y + 1 + n as u16, line, area.width);
         }
     }
 
-    /// The keys that matter in the current mode, always on screen.
-    fn draw_hints(&self, buffer: &mut Buffer, area: Rect) {
-        let hints: &[(&str, &str)] = match self.mode {
-            Mode::View | Mode::Help => &[
-                ("?", "Help"),
-                ("q", "Quit"),
-                ("f", "Files"),
-                ("t", "Contents"),
-                ("/", "Search"),
-                ("y", "Copy code"),
-                ("o", "Browser"),
-                ("Tab", "Link"),
-                ("Enter", "Follow"),
-                ("Bksp", "Back"),
-                ("i", "Images"),
-                ("c", "Colours"),
-                ("r", "Reload"),
-            ],
-            Mode::Picker => &[
-                ("↑↓", "Move"),
-                ("Enter", "Open"),
-                ("Esc", "Back"),
-                ("type", "Filter"),
-            ],
-            Mode::Toc => &[("↑↓", "Move"), ("Enter", "Go"), ("Esc", "Close")],
-            Mode::Search => &[("Enter", "Search"), ("Esc", "Cancel")],
+    /// The keys of the current mode, wrapped to `width` in at most
+    /// `max_rows` rows.
+    fn help_rows(&self, width: u16, max_rows: u16) -> Vec<Line<'static>> {
+        let keys = match self.mode {
+            Mode::View => VIEW_KEYS,
+            Mode::Picker => PICKER_KEYS,
+            Mode::Toc => TOC_KEYS,
+            Mode::Search => SEARCH_KEYS,
         };
         let key = Style::new()
             .fg(self.theme.bar_fg)
             .bg(self.theme.bar_bg)
             .add_modifier(Modifier::BOLD);
         let label = Style::new().fg(self.theme.dim);
-        let mut spans = vec![Span::raw(" ")];
+        let mut rows: Vec<Vec<Span<'static>>> = vec![vec![Span::raw(" ")]];
         let mut used = 1;
-        for (name, what) in hints {
-            let width = name.width() + what.width() + 5;
-            if used + width > area.width as usize {
-                break;
+        for (name, what) in keys {
+            let needed = name.width() + what.width() + 5;
+            if used > 1 && used + needed > width as usize {
+                rows.push(vec![Span::raw(" ")]);
+                used = 1;
             }
-            used += width;
-            spans.push(Span::styled(format!(" {name} "), key));
-            spans.push(Span::styled(format!(" {what}  "), label));
+            used += needed;
+            let row = rows.last_mut().expect("rows is never empty");
+            row.push(Span::styled(format!(" {name} "), key));
+            row.push(Span::styled(format!(" {what}  "), label));
         }
-        buffer.set_line(area.x, area.y, &Line::from(spans), area.width);
+        rows.truncate(max_rows as usize);
+        rows.into_iter().map(Line::from).collect()
     }
 
     fn draw_document(&mut self, frame: &mut Frame, area: Rect) {
@@ -1002,6 +1116,9 @@ impl App {
         let search_style = Style::new()
             .fg(self.theme.search_fg)
             .bg(self.theme.search_bg);
+        let selected = self
+            .selection
+            .map(|(a, b)| if a <= b { (a, b) } else { (b, a) });
         for row in 0..view.height {
             let number = doc.scroll + row as usize;
             let Some(line) = doc.rendered.lines.get(number) else {
@@ -1030,6 +1147,20 @@ impl App {
                 let start = (*start).min(view.width);
                 let end = (*end).min(view.width);
                 buffer.set_style(Rect::new(view.x + start, y, end - start, 1), search_style);
+            }
+            if let Some((start, end)) = selected.filter(|(s, e)| s.0 <= number && number <= e.0) {
+                let from = if number == start.0 { start.1 } else { 0 };
+                let to = if number == end.0 {
+                    end.1.saturating_add(1)
+                } else {
+                    line.width().max(1)
+                };
+                let to = to.min(view.width);
+                let from = from.min(to);
+                buffer.set_style(
+                    Rect::new(view.x + from, y, to - from, 1),
+                    Style::new().add_modifier(Modifier::REVERSED),
+                );
             }
             if let Some((_, hit)) = self.link_focus.filter(|focus| focus.0 == number) {
                 if let Some(hit) = line.links.get(hit) {
@@ -1136,28 +1267,6 @@ impl App {
         frame.render_stateful_widget(list, rect, &mut state);
     }
 
-    fn draw_help(&mut self, frame: &mut Frame, area: Rect) {
-        let theme = &self.theme;
-        let keys = HELP.iter().map(|(k, _)| k.width()).max().unwrap_or(0);
-        let lines: Vec<Line> = HELP
-            .iter()
-            .map(|(key, what)| {
-                Line::from(vec![
-                    Span::styled(format!(" {key:<keys$}  "), Style::new().fg(theme.accent)),
-                    Span::raw(*what),
-                ])
-            })
-            .collect();
-        let widest = HELP.iter().map(|(_, w)| w.width()).max().unwrap_or(0);
-        let rect = popup(area, (keys + widest + 6) as u16, lines.len() as u16 + 2);
-        let block = Block::new()
-            .borders(Borders::ALL)
-            .border_style(Style::new().fg(theme.accent))
-            .title(" Keys ");
-        frame.render_widget(Clear, rect);
-        frame.render_widget(Paragraph::new(lines).block(block), rect);
-    }
-
     fn draw_status(&self, buffer: &mut Buffer, area: Rect) {
         let theme = &self.theme;
         let bar = Style::new().fg(theme.bar_fg).bg(theme.bar_bg);
@@ -1186,7 +1295,11 @@ impl App {
             (Some(doc), _) => {
                 let total = doc.rendered.lines.len().max(1);
                 let bottom = (doc.scroll + self.view.height as usize).min(total);
-                format!(" {}% · {} ", bottom * 100 / total, self.graphics.name())
+                format!(
+                    " {}% · {} · ? help ",
+                    bottom * 100 / total,
+                    self.graphics.name()
+                )
             }
             (None, _) => String::new(),
         };
@@ -1214,5 +1327,21 @@ impl App {
             &right,
             bar.fg(theme.dim),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn columns_slice_by_display_width() {
+        assert_eq!(slice_columns("hello world", 6, 11), "world");
+        assert_eq!(slice_columns("hello world", 0, 5), "hello");
+        assert_eq!(slice_columns("hello", 2, u16::MAX), "llo");
+        assert_eq!(slice_columns("hello", 9, 12), "");
+        // Wide characters take two columns each.
+        assert_eq!(slice_columns("日本語 ok", 2, 6), "本語");
+        assert_eq!(slice_columns("│ a │ b │", 2, 3), "a");
     }
 }

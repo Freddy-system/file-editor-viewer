@@ -66,11 +66,14 @@ description = "vista previa de Markdown"
 | `Retroceso` | Volver al documento anterior |
 | `t` | Índice del documento |
 | `f` | Selector de archivos |
+| Arrastrar con el ratón | Seleccionar texto; al soltar queda copiado |
 | `y`, clic sobre un bloque de código | Copiar el bloque al portapapeles |
+| `Y`, `Ctrl+A` | Copiar el documento entero (fuente Markdown) |
 | `o` | Abrir en el navegador |
 | `i` | Cambiar modo de imágenes (`kitty` / `text`) |
 | `c` | Colores claros / oscuros |
-| `r`, `?`, `q` | Recargar, ayuda, salir |
+| `?` | Mostrar u ocultar el panel de ayuda con todas las teclas |
+| `r`, `q` | Recargar, salir |
 
 ## Diagramas e imágenes: tres niveles
 
