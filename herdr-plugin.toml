@@ -5,9 +5,10 @@ min_herdr_version = "0.9.0"
 description = "Preview Markdown in a pane: Mermaid and Graphviz diagrams, LaTeX math, tables, syntax highlighting, live reload"
 platforms = ["linux", "macos"]
 
-# Needs a Rust toolchain (cargo) on PATH.
+# Downloads the prebuilt binary of this release, or builds it with cargo when
+# there is none for the platform.
 [[build]]
-command = ["cargo", "build", "--release", "--bin", "mdview"]
+command = ["sh", "scripts/install.sh"]
 
 # The viewer. Opened by the actions below, which tell it what to show;
 # opened directly it shows the focused pane's README or a file picker.

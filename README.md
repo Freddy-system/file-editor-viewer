@@ -1,37 +1,35 @@
 # mdview
 
-Visor de Markdown escrito en Rust. Funciona como **plugin de [herdr](https://herdr.dev)**,
-como visor de terminal independiente y como vista previa en el navegador.
+English · [Español](README.es.md)
 
-Dibuja Markdown completo (GFM): tablas, listas de tareas, alertas, notas al pie,
-listas de definición, front matter, sub y superíndices, wikilinks, código con
-resaltado, **diagramas Mermaid y Graphviz**, **fórmulas LaTeX** e imágenes.
-Recarga solo cuando el archivo cambia.
+A Markdown previewer for the terminal that draws **Mermaid diagrams, Graphviz
+graphs and LaTeX math**. It runs as a [herdr](https://herdr.dev) plugin, as a
+standalone terminal viewer, and as a live browser preview. Written in Rust.
 
-## Instalar el plugin en herdr
+<!-- demo: put docs/demo.gif here -->
 
-Requisitos: herdr 0.9 o superior y `cargo`.
+- **Full GitHub-flavoured Markdown**: tables, task lists, alerts, footnotes,
+  definition lists, front matter, sub/superscripts, wikilinks, syntax
+  highlighting.
+- **Diagrams and math in the terminal**: real images where the terminal can
+  show them, box-drawing text where it cannot.
+- **Live reload**: the preview follows the file as you save it.
+- **Made for reading docs**: table of contents, search, links between
+  documents, a file picker, click to copy a code block.
 
-Desde GitHub:
+## Install as a herdr plugin
+
+Needs herdr 0.9 or newer.
 
 ```bash
 herdr plugin install Freddy-system/herdr-mdview
 ```
 
-Desde una copia local:
+The install downloads a prebuilt binary for Linux and macOS (x86_64 and
+arm64). On other platforms, or with `MDVIEW_BUILD_FROM_SOURCE=1`, it builds
+with `cargo`.
 
-```bash
-cargo build --release --bin mdview
-herdr plugin link /ruta/a/este/repositorio
-```
-
-Para tener el comando `mdview` en la terminal:
-
-```bash
-cargo install --git https://github.com/Freddy-system/herdr-mdview mdview
-```
-
-Para abrirlo con una tecla, añade esto a `~/.config/herdr/config.toml` y ejecuta
+Bind it to a key in `~/.config/herdr/config.toml`, then run
 `herdr server reload-config`:
 
 ```toml
@@ -39,142 +37,123 @@ Para abrirlo con una tecla, añade esto a `~/.config/herdr/config.toml` y ejecut
 key = "prefix+m"
 type = "plugin_action"
 command = "mdview.open"
-description = "vista previa de Markdown"
+description = "preview Markdown"
 ```
 
-### Cómo se usa dentro de herdr
+### Using it in herdr
 
-| Qué haces | Qué pasa |
+| You do | What happens |
 |---|---|
-| Pulsas la tecla configurada | Se abre un panel a la derecha con el `README.md` de la carpeta del panel activo, o un selector de archivos si no hay README |
-| Escribes `mdview open notas.md` en un panel | Se abre ese archivo en un panel a la derecha |
-| Escribes `mdview open` en un panel | Se abre el README de la carpeta actual, o el selector |
-| Seleccionas una ruta `.md` y pulsas la tecla | Se abre ese archivo |
-| Ctrl-clic sobre un enlace a un `.md` local | Se abre ese archivo |
-| `herdr plugin action invoke mdview.open-tab` | Lo mismo, en una pestaña nueva |
-| `herdr plugin action invoke mdview.open-overlay` | Lo mismo, en un panel superpuesto |
+| Press the key | A pane opens on the right with the `README.md` of the focused pane's directory, or a file picker if there is none |
+| Select a `.md` path, then press the key | That file opens |
+| Ctrl-click a link to a local `.md` file | That file opens |
+| Run `mdview open notes.md` in a pane | That file opens in a pane beside it |
+| `herdr plugin action invoke mdview.open-tab` | Same, in a new tab |
+| `herdr plugin action invoke mdview.open-overlay` | Same, in an overlay |
 
-### Teclas del visor
+`mdview open` needs the `mdview` command on your `PATH`; see
+[Standalone](#standalone).
 
-| Tecla | Acción |
+## Keys
+
+Press `?` in the viewer for this list.
+
+| Key | Action |
 |---|---|
-| `j` `k` `↑` `↓`, rueda | Desplazar |
-| `d` `u`, `Espacio`, `RePág` `AvPág` | Media página / página |
-| `g` `G` | Inicio / final |
-| `/`, `n` `N` | Buscar, coincidencia siguiente / anterior |
-| `Tab`, `Mayús-Tab`, `Enter`, clic | Elegir y seguir enlaces (entre documentos y a títulos) |
-| `Retroceso` | Volver al documento anterior |
-| `t` | Índice del documento |
-| `f` | Selector de archivos |
-| Arrastrar con el ratón | Seleccionar texto; al soltar queda copiado |
-| `y`, clic sobre un bloque de código | Copiar el bloque al portapapeles |
-| `Y`, `Ctrl+A` | Copiar el documento entero (fuente Markdown) |
-| `o` | Abrir en el navegador |
-| `i` | Cambiar modo de imágenes (`kitty` / `text`) |
-| `c` | Colores claros / oscuros |
-| `?` | Ventana de ayuda con todas las teclas |
-| `r`, `q` | Recargar, salir |
+| `j` `k` `↑` `↓`, wheel | Scroll |
+| `Space`, `d` `u`, `PgUp` `PgDn` | Page, half page |
+| `g` `G` | Top, bottom |
+| `/`, `n` `N` | Search, next and previous match |
+| `Tab`, `Shift-Tab`, `Enter`, click | Select and follow links, across documents and to headings |
+| `Backspace` | Previous document |
+| `t` | Table of contents |
+| `f` | File picker |
+| Drag | Select text; it is copied when you release |
+| `y`, click on a code block | Copy the code block |
+| `Y`, `Ctrl-A` | Copy the whole document as Markdown |
+| `o` | Open in the browser |
+| `i` | Switch image mode (`kitty` / `text`) |
+| `c` | Light or dark colours |
+| `r`, `q` | Reload, quit |
 
-## Diagramas e imágenes: tres niveles
+## How diagrams are drawn
 
-herdr solo ofrece a los plugins paneles de terminal, así que la calidad de los
-gráficos depende del terminal en el que corre herdr:
+herdr gives plugins terminal panes, so what graphics can look like depends on
+the terminal herdr runs in. mdview has three levels:
 
-1. **Modo `kitty`**: imagen real. Los diagramas y las fórmulas se dibujan como
-   imágenes nítidas con el protocolo gráfico de Kitty. Funciona en Kitty,
-   Ghostty, WezTerm y Konsole.
-2. **Modo `text`**: para terminales sin imágenes, como Alacritty. Mermaid se
-   dibuja con caracteres de caja, las fórmulas con símbolos Unicode y las
-   imágenes con medios bloques de color.
-3. **Navegador** (`o`): fidelidad completa en cualquier terminal. Usa Mermaid,
-   KaTeX y Graphviz originales, con recarga en vivo.
+| Level | Where | Result |
+|---|---|---|
+| `kitty` | Kitty, Ghostty, WezTerm, Konsole | Diagrams, math and images as sharp pictures, through the Kitty graphics protocol |
+| `text` | Any terminal, e.g. Alacritty | Mermaid as box-drawing characters, math as Unicode, images as coloured half blocks |
+| Browser (`o`) | Anywhere | The original Mermaid, KaTeX and Graphviz renderers, with live reload |
 
-mdview elige el modo según el terminal que detecta; `i` lo cambia y recuerda la
-elección. Graphviz no tiene modo de texto: en `text` se ve en baja resolución y
-conviene abrirlo en el navegador.
+mdview picks `kitty` or `text` from the terminal it detects. `i` switches and
+remembers your choice.
 
-Variables de entorno:
+Known limits:
 
-| Variable | Efecto |
+- Graphviz has no text mode. In `text` it is drawn at low resolution; open it
+  in the browser instead.
+- Complex Mermaid diagrams can come out crowded in `text` mode.
+- The browser preview loads Mermaid, KaTeX, highlight.js and Graphviz from a
+  CDN, so it needs a connection the first time.
+- Windows is not supported yet.
+
+If `plantuml` or `d2` are installed, their code blocks are drawn too.
+
+### Environment
+
+| Variable | Effect |
 |---|---|
-| `MDVIEW_GRAPHICS=kitty\|text` | Fuerza el modo de imágenes |
-| `MDVIEW_THEME=light\|dark` | Colores iniciales |
-| `MDVIEW_CELL=10x20` | Tamaño de celda en píxeles que se asume al dimensionar imágenes |
-| `MDVIEW_MOUSE=0` | No capturar el ratón (para seleccionar texto con el terminal) |
+| `MDVIEW_GRAPHICS=kitty\|text` | Force the image mode |
+| `MDVIEW_THEME=light\|dark` | Starting colours |
+| `MDVIEW_CELL=10x20` | Cell size in pixels assumed when sizing images |
+| `MDVIEW_MOUSE=0` | Leave the mouse to the terminal |
 
-Si `plantuml` o `d2` están instalados, sus bloques de código también se dibujan.
+## Standalone
 
-## Uso fuera de herdr
+mdview does not need herdr.
 
 ```bash
-mdview README.md            # visor de terminal
-mdview docs/                # selector de archivos de una carpeta
-mdview serve docs/          # vista previa en el navegador con recarga en vivo
-mdview export README.md     # escribe README.html
+cargo install --git https://github.com/Freddy-system/herdr-mdview mdview
 ```
 
-La vista de navegador carga Mermaid, KaTeX, highlight.js y Graphviz desde un
-CDN, así que la primera vez necesita conexión. El servidor solo escucha en
-`127.0.0.1` y no sirve nada fuera de la carpeta indicada.
+Prebuilt binaries are attached to each
+[release](https://github.com/Freddy-system/herdr-mdview/releases).
 
-## Arquitectura
-
-Cada pieza es un crate independiente. Los frontends no se conocen entre sí;
-todos parten del mismo modelo de documento.
-
-```mermaid
-flowchart TD
-    core[mdview-core<br/>parser y modelo del documento]
-    render[mdview-render<br/>Mermaid, Graphviz, LaTeX, SVG a píxeles]
-    tui[mdview-tui<br/>visor de terminal]
-    web[mdview-web<br/>página HTML y servidor]
-    bin[mdview<br/>binario y plugin de herdr]
-    core --> tui
-    core --> web
-    render --> tui
-    tui --> bin
-    web --> bin
-    web --> tui
+```bash
+mdview README.md            # terminal viewer
+mdview docs/                # file picker for a directory
+mdview serve docs/          # browser preview with live reload
+mdview export README.md     # writes README.html
 ```
 
-| Crate | Responsabilidad |
+The preview server listens on `127.0.0.1` only and serves nothing outside the
+directory you give it.
+
+## Architecture
+
+Each part is its own crate. The frontends do not know about each other; they
+all start from the same document model.
+
+| Crate | Role |
 |---|---|
-| `mdview-core` | Convierte Markdown en un árbol de bloques. Aquí se añade sintaxis nueva una sola vez para todos los frontends |
-| `mdview-render` | Motores de diagramas tras el trait `DiagramEngine`. Un lenguaje nuevo es un motor nuevo registrado en `Registry` |
-| `mdview-tui` | Maquetado a líneas de terminal, imágenes Kitty o texto, y la aplicación interactiva |
-| `mdview-web` | Página HTML autocontenida y servidor local con recarga en vivo |
-| `mdview` | Línea de comandos y el pegamento con herdr (`herdr-plugin.toml`) |
+| `mdview-core` | Parses Markdown into a tree of blocks. New syntax is added here once, for every frontend |
+| `mdview-render` | Diagram engines behind the `DiagramEngine` trait. A new language is a new engine in the `Registry` |
+| `mdview-tui` | Layout to terminal lines, Kitty or text graphics, and the interactive viewer |
+| `mdview-web` | Self-contained HTML page and the local live-reload server |
+| `mdview` | Command line and the herdr glue (`herdr-plugin.toml`) |
 
-## Plan: VS Code y aplicación de escritorio
+## Roadmap
 
-Aún no están implementados. Ambos reutilizan `mdview-web`, que ya produce la
-página completa, así que no añaden código de renderizado propio.
+- **VS Code extension**: a webview showing the `mdview-web` page, with scroll
+  sync through the heading ids the core already produces.
+- **Desktop app** for Linux, Windows and macOS: a Tauri shell around the same
+  page.
+- Bundle the web assets so the browser preview works offline.
+- Windows support for the herdr plugin.
 
-**Extensión de VS Code**
-
-1. Extensión en TypeScript con un comando «mdview: Abrir vista previa» que crea
-   un `WebviewPanel` junto al editor.
-2. La extensión arranca `mdview serve` sobre la carpeta del workspace y carga la
-   página en el webview; la recarga en vivo ya la da el servidor.
-3. Sincronizar el desplazamiento editor ↔ vista previa mediante mensajes del
-   webview, usando los `id` de los títulos que el núcleo ya genera.
-4. Empaquetar el binario por plataforma dentro del `.vsix`. Alternativa sin
-   binario: compilar `mdview-core` y `mdview-web` a WebAssembly.
-5. Incluir Mermaid, KaTeX y highlight.js dentro de la extensión, porque los
-   webviews bloquean los CDN por defecto.
-
-**Aplicación de escritorio (Linux, Windows, macOS)**
-
-1. Envoltorio con Tauri: una ventana cuyo contenido es la página de
-   `mdview-web`, con `mdview-core` enlazado directamente en el proceso Rust.
-2. Menú nativo, abrir archivo o carpeta, arrastrar y soltar, archivos recientes
-   y asociación con la extensión `.md`.
-3. Recursos web incluidos en el instalador para que funcione sin conexión.
-4. Instaladores por plataforma (`.deb`, AppImage, `.msi`, `.dmg`) generados en CI.
-
-Trabajo previo común a los dos: mover los recursos del CDN al propio paquete.
-
-## Desarrollo
+## Development
 
 ```bash
 cargo test --workspace
@@ -182,12 +161,10 @@ cargo fmt --all
 cargo run -- examples/demo.md
 ```
 
-`examples/demo.md` recorre todo lo que el visor sabe dibujar.
+`examples/demo.md` walks through everything the viewer draws. Pushing a `v*`
+tag builds and publishes the release binaries.
 
-El plugin declara `linux` y `macos`. Windows queda pendiente: el manifiesto
-apunta a `target/release/mdview`, sin `.exe`.
+## License
 
-## Licencia
-
-MIT © 2026 Freddy Sedano. Consulta [LICENSE](LICENSE). Cualquier copia o trabajo
-derivado debe conservar el aviso de copyright y el texto de la licencia.
+MIT © 2026 Freddy Sedano. See [LICENSE](LICENSE). Copies and derived work must
+keep the copyright notice and the license text.
