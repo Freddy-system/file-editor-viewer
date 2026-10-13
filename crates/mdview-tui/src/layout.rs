@@ -324,15 +324,13 @@ impl Layouter<'_> {
 
     fn heading(&mut self, level: u8, content: &[Inline], width: u16) -> Vec<RLine> {
         let color = self.theme().headings[(level.clamp(1, 6) - 1) as usize];
-        let style = Style::new().fg(color).add_modifier(Modifier::BOLD);
-        let mut items = Vec::new();
-        if level >= 3 {
-            items.push(Item::Piece(Piece {
-                text: format!("{} ", "#".repeat(level as usize)),
-                style: Style::new().fg(self.theme().dim),
-                link: None,
-            }));
+        // Levels 1 and 2 get a rule below; deeper ones are told apart by
+        // colour, and by italics from level 4 down.
+        let mut style = Style::new().fg(color).add_modifier(Modifier::BOLD);
+        if level >= 4 {
+            style = style.add_modifier(Modifier::ITALIC);
         }
+        let mut items = Vec::new();
         self.inline_items(content, style, None, &mut items);
         let mut lines = wrap(items, width);
         let underline = match level {
@@ -749,14 +747,23 @@ impl Layouter<'_> {
             }
             RLine::from_spans(vec![Span::styled(text, border)])
         };
+        let rows: Vec<Vec<Vec<RLine>>> = cells
+            .into_iter()
+            .map(|row| {
+                row.into_iter()
+                    .enumerate()
+                    .map(|(c, items)| wrap(items, widths[c] as u16))
+                    .collect()
+            })
+            .collect();
+        let height_of = |row: &Vec<Vec<RLine>>| row.iter().map(Vec::len).max().unwrap_or(1).max(1);
+        // Once a cell wraps, rows are ruled off so it stays clear which
+        // lines belong together.
+        let ruled = rows.iter().skip(1).any(|row| height_of(row) > 1);
+        let last = rows.len() - 1;
         let mut lines = vec![edge("┌", "┬", "┐")];
-        for (r, row) in cells.into_iter().enumerate() {
-            let wrapped: Vec<Vec<RLine>> = row
-                .into_iter()
-                .enumerate()
-                .map(|(c, items)| wrap(items, widths[c] as u16))
-                .collect();
-            let height = wrapped.iter().map(Vec::len).max().unwrap_or(1).max(1);
+        for (r, wrapped) in rows.iter().enumerate() {
+            let height = height_of(wrapped);
             for n in 0..height {
                 let mut line = RLine::from_spans(vec![Span::styled("│", border)]);
                 for (c, column) in wrapped.iter().enumerate() {
@@ -780,7 +787,7 @@ impl Layouter<'_> {
                 }
                 lines.push(line);
             }
-            if r == 0 && !table.rows.is_empty() {
+            if r < last && (r == 0 || ruled) {
                 lines.push(edge("├", "┼", "┤"));
             }
         }
@@ -1234,6 +1241,8 @@ mod tests {
         let line = rendered.anchors["part-two"];
         assert_eq!(rendered.lines[line].text(), "Part two");
         assert_eq!(rendered.toc.len(), 2);
+        let deep = render("### Third level\n", 40, Graphics::Text);
+        assert_eq!(texts(&deep), ["Third level"]);
     }
 
     #[test]
@@ -1250,6 +1259,15 @@ mod tests {
             assert!(all.contains(word), "missing {word} in\n{all}");
         }
         assert!(all.starts_with('┌') && all.trim_end().ends_with('┘'));
+        // A wrapped cell rules off every row; a table of single lines only
+        // rules off its header.
+        let wrapped = "| a | b |\n|---|---|\n| one two three four five six | x |\n| y | z |\n";
+        let ruled = |source| {
+            let lines = texts(&render(source, 20, Graphics::Text));
+            lines.iter().filter(|l| l.starts_with('├')).count()
+        };
+        assert_eq!(ruled(wrapped), 2);
+        assert_eq!(ruled("| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n"), 1);
     }
 
     #[test]
