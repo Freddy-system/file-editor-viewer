@@ -174,3 +174,8 @@ cargo run -- examples/demo.md
 
 El plugin declara `linux` y `macos`. Windows queda pendiente: el manifiesto
 apunta a `target/release/mdview`, sin `.exe`.
+
+## Licencia
+
+MIT © 2026 Freddy Sedano. Consulta [LICENSE](LICENSE). Cualquier copia o trabajo
+derivado debe conservar el aviso de copyright y el texto de la licencia.

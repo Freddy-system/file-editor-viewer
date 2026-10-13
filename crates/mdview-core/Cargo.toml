@@ -4,6 +4,7 @@ description = "Markdown parsing and document model shared by every mdview fronte
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
 
 [dependencies]
 pulldown-cmark.workspace = true
