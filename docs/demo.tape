@@ -2,6 +2,8 @@
 # Run from the repository root with mdview on PATH:  vhs docs/demo.tape
 # VHS draws in a plain terminal without image support, so this shows the
 # text mode every terminal gets.
+# VHS does not keep a steady pace between runs; the published GIF was retimed
+# to 28 seconds with ffmpeg (setpts) afterwards.
 
 Output docs/demo.gif
 
