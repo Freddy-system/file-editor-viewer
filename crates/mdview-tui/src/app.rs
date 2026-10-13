@@ -832,8 +832,10 @@ impl App {
         if area.height < 2 || area.width < 10 {
             return;
         }
-        let content = Rect::new(area.x, area.y, area.width, area.height - 1);
-        let status = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
+        // Status line, plus a row of key hints when there is room for it.
+        let bars = if area.height >= 8 { 2 } else { 1 };
+        let content = Rect::new(area.x, area.y, area.width, area.height - bars);
+        let status = Rect::new(area.x, content.y + content.height, area.width, 1);
         self.placements.clear();
         if self.mode == Mode::Picker {
             self.draw_picker(frame, content);
@@ -850,6 +852,55 @@ impl App {
             self.placements.clear();
         }
         self.draw_status(frame.buffer_mut(), status);
+        if bars == 2 {
+            let hints = Rect::new(area.x, status.y + 1, area.width, 1);
+            self.draw_hints(frame.buffer_mut(), hints);
+        }
+    }
+
+    /// The keys that matter in the current mode, always on screen.
+    fn draw_hints(&self, buffer: &mut Buffer, area: Rect) {
+        let hints: &[(&str, &str)] = match self.mode {
+            Mode::View | Mode::Help => &[
+                ("?", "Help"),
+                ("q", "Quit"),
+                ("f", "Files"),
+                ("t", "Contents"),
+                ("/", "Search"),
+                ("o", "Browser"),
+                ("Tab", "Link"),
+                ("Enter", "Follow"),
+                ("Bksp", "Back"),
+                ("i", "Images"),
+                ("c", "Colours"),
+                ("r", "Reload"),
+            ],
+            Mode::Picker => &[
+                ("↑↓", "Move"),
+                ("Enter", "Open"),
+                ("Esc", "Back"),
+                ("type", "Filter"),
+            ],
+            Mode::Toc => &[("↑↓", "Move"), ("Enter", "Go"), ("Esc", "Close")],
+            Mode::Search => &[("Enter", "Search"), ("Esc", "Cancel")],
+        };
+        let key = Style::new()
+            .fg(self.theme.bar_fg)
+            .bg(self.theme.bar_bg)
+            .add_modifier(Modifier::BOLD);
+        let label = Style::new().fg(self.theme.dim);
+        let mut spans = vec![Span::raw(" ")];
+        let mut used = 1;
+        for (name, what) in hints {
+            let width = name.width() + what.width() + 5;
+            if used + width > area.width as usize {
+                break;
+            }
+            used += width;
+            spans.push(Span::styled(format!(" {name} "), key));
+            spans.push(Span::styled(format!(" {what}  "), label));
+        }
+        buffer.set_line(area.x, area.y, &Line::from(spans), area.width);
     }
 
     fn draw_document(&mut self, frame: &mut Frame, area: Rect) {
@@ -1057,15 +1108,11 @@ impl App {
             (None, _) => String::new(),
         };
         let right = match (&self.doc, self.mode) {
-            (_, Mode::Picker) => " ↑↓ move · Enter open · Esc back ".to_string(),
+            (_, Mode::Picker) => String::new(),
             (Some(doc), _) => {
                 let total = doc.rendered.lines.len().max(1);
                 let bottom = (doc.scroll + self.view.height as usize).min(total);
-                format!(
-                    " {}% · {} · ? keys ",
-                    bottom * 100 / total,
-                    self.graphics.name()
-                )
+                format!(" {}% · {} ", bottom * 100 / total, self.graphics.name())
             }
             (None, _) => String::new(),
         };

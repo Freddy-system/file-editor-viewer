@@ -25,6 +25,12 @@ cargo build --release --bin mdview
 herdr plugin link /ruta/a/este/repositorio
 ```
 
+Para tener el comando `mdview` en la terminal:
+
+```bash
+cargo install --git https://github.com/Freddy-system/herdr-mdview mdview
+```
+
 Para abrirlo con una tecla, añade esto a `~/.config/herdr/config.toml` y ejecuta
 `herdr server reload-config`:
 
@@ -41,6 +47,8 @@ description = "vista previa de Markdown"
 | Qué haces | Qué pasa |
 |---|---|
 | Pulsas la tecla configurada | Se abre un panel a la derecha con el `README.md` de la carpeta del panel activo, o un selector de archivos si no hay README |
+| Escribes `mdview open notas.md` en un panel | Se abre ese archivo en un panel a la derecha |
+| Escribes `mdview open` en un panel | Se abre el README de la carpeta actual, o el selector |
 | Seleccionas una ruta `.md` y pulsas la tecla | Se abre ese archivo |
 | Ctrl-clic sobre un enlace a un `.md` local | Se abre ese archivo |
 | `herdr plugin action invoke mdview.open-tab` | Lo mismo, en una pestaña nueva |

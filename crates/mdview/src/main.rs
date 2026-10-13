@@ -30,6 +30,14 @@ enum Cmd {
         #[arg(long)]
         no_open: bool,
     },
+    /// Preview in a herdr pane beside this one; outside herdr, view here.
+    Open {
+        /// Markdown file or directory.
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        #[arg(long, value_enum, default_value_t = herdr::Placement::Split)]
+        placement: herdr::Placement,
+    },
     /// Write a Markdown file as a standalone HTML page.
     Export {
         file: PathBuf,
@@ -51,6 +59,7 @@ fn main() -> anyhow::Result<()> {
             port,
             no_open,
         }) => serve(&path, port, !no_open),
+        Some(Cmd::Open { path, placement }) => open(&path, placement),
         Some(Cmd::Export { file, output }) => export(&file, output),
         Some(Cmd::Herdr(command)) => herdr::run(command),
     }
@@ -79,6 +88,25 @@ fn view(target: &Path, root: Option<PathBuf>, anchor: Option<String>) -> anyhow:
         }
     };
     mdview_tui::run(options)
+}
+
+fn open(path: &Path, placement: herdr::Placement) -> anyhow::Result<()> {
+    if std::env::var_os("HERDR_ENV").is_none() {
+        return view(path, None, None);
+    }
+    let target = path
+        .canonicalize()
+        .with_context(|| format!("{} does not exist", path.display()))?;
+    let base = std::env::current_dir()?;
+    let pane = std::env::var("HERDR_PANE_ID").ok();
+    herdr::open_pane(
+        herdr::PLUGIN_ID,
+        &target,
+        &base,
+        "",
+        placement,
+        pane.as_deref(),
+    )
 }
 
 fn serve(path: &Path, port: u16, open: bool) -> anyhow::Result<()> {

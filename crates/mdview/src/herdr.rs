@@ -11,6 +11,8 @@ use anyhow::{bail, Context};
 use clap::{Subcommand, ValueEnum};
 use serde_json::Value;
 
+/// Id this plugin is registered under in `herdr-plugin.toml`.
+pub const PLUGIN_ID: &str = "mdview";
 const TARGET_ENV: &str = "MDVIEW_TARGET";
 const ROOT_ENV: &str = "MDVIEW_ROOT";
 const ANCHOR_ENV: &str = "MDVIEW_ANCHOR";
@@ -145,15 +147,29 @@ fn open(context: &Value, placement: Placement) -> anyhow::Result<()> {
     });
     let (target, anchor) = found.unwrap_or_else(|| (base.clone(), ""));
 
-    let herdr = std::env::var("HERDR_BIN_PATH").unwrap_or_else(|_| "herdr".into());
     let plugin = std::env::var("HERDR_PLUGIN_ID").context("not running as a herdr plugin")?;
+    let pane = text(context, "focused_pane_id");
+    open_pane(&plugin, &target, &base, anchor, placement, pane)
+}
+
+/// Asks herdr for a preview pane showing `target`. A split goes to the right
+/// of `beside`.
+pub fn open_pane(
+    plugin: &str,
+    target: &Path,
+    base: &Path,
+    anchor: &str,
+    placement: Placement,
+    beside: Option<&str>,
+) -> anyhow::Result<()> {
+    let herdr = std::env::var("HERDR_BIN_PATH").unwrap_or_else(|_| "herdr".into());
     let mut command = Command::new(herdr);
     command.args([
         "plugin",
         "pane",
         "open",
         "--plugin",
-        &plugin,
+        plugin,
         "--entrypoint",
         "preview",
     ]);
@@ -168,7 +184,7 @@ fn open(context: &Value, placement: Placement) -> anyhow::Result<()> {
     ]);
     if matches!(placement, Placement::Split) {
         command.args(["--direction", "right"]);
-        if let Some(pane) = text(context, "focused_pane_id") {
+        if let Some(pane) = beside {
             command.args(["--target-pane", pane]);
         }
     }
