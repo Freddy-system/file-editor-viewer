@@ -12,10 +12,10 @@ Recarga solo cuando el archivo cambia.
 
 Requisitos: herdr 0.9 o superior y `cargo`.
 
-Desde GitHub (cuando el repositorio esté publicado):
+Desde GitHub:
 
 ```bash
-herdr plugin install <usuario>/<repo>
+herdr plugin install Freddy-system/herdr-mdview
 ```
 
 Desde una copia local:
