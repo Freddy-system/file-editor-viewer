@@ -27,7 +27,19 @@ fn graphviz_renders_to_pixels() {
     let svg = engine.to_svg("digraph { a -> b; b -> c; }", DARK).unwrap();
     let image = rasterize_svg(&svg, 1.0).unwrap();
     assert!(image.width() > 20 && image.height() > 20);
-    assert!(engine.to_text("digraph { a -> b }", 80).is_none());
+
+    // Terminals without images get the graph as a text drawing.
+    let source =
+        "digraph { rankdir=LR; a [label=\"Start here\"]; a -> b -> c; b -> a [label=\"retry\"]; }";
+    let text = engine.to_text(source, 100).unwrap().unwrap();
+    for part in ["Start here", "b", "c", "retry"] {
+        assert!(text.contains(part), "missing {part} in\n{text}");
+    }
+    assert!(
+        text.lines().count() < 12,
+        "left-to-right graph should be shallow:\n{text}"
+    );
+    assert!(engine.to_text("digraph {", 80).is_none());
 
     // Default black ink would vanish on a dark background.
     assert!(!svg.contains("#000000ff") && svg.contains("#dcdcdcff"));

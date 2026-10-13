@@ -87,15 +87,15 @@ gráficos depende del terminal en el que corre herdr:
 1. **Modo `kitty`**: imagen real. Los diagramas y las fórmulas se dibujan como
    imágenes nítidas con el protocolo gráfico de Kitty. Funciona en Kitty,
    Ghostty, WezTerm y Konsole.
-2. **Modo `text`**: para terminales sin imágenes, como Alacritty. Mermaid se
-   dibuja con caracteres de caja, las fórmulas con símbolos Unicode y las
+2. **Modo `text`**: para terminales sin imágenes, como Alacritty. Mermaid y
+   Graphviz se dibujan con caracteres de caja, las fórmulas con símbolos Unicode y las
    imágenes con medios bloques de color.
 3. **Navegador** (`o`): fidelidad completa en cualquier terminal. Usa Mermaid,
    KaTeX y Graphviz originales, con recarga en vivo.
 
 mdview elige el modo según el terminal que detecta; `i` lo cambia y recuerda la
-elección. Graphviz no tiene modo de texto: en `text` se ve en baja resolución y
-conviene abrirlo en el navegador.
+elección. En `text`, los grafos de Graphviz conservan nodos, aristas
+y etiquetas, pero no sus colores ni su disposición exacta.
 
 Variables de entorno:
 

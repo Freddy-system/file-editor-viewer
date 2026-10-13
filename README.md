@@ -6,7 +6,10 @@ A Markdown previewer for the terminal that draws **Mermaid diagrams, Graphviz
 graphs and LaTeX math**. It runs as a [herdr](https://herdr.dev) plugin, as a
 standalone terminal viewer, and as a live browser preview. Written in Rust.
 
-<!-- demo: put docs/demo.gif here -->
+![mdview previewing a document with diagrams in a terminal](docs/demo.gif)
+
+The recording is a plain terminal with no image support: what every terminal
+gets.
 
 - **Full GitHub-flavoured Markdown**: tables, task lists, alerts, footnotes,
   definition lists, front matter, sub/superscripts, wikilinks, syntax
@@ -84,7 +87,7 @@ the terminal herdr runs in. mdview has three levels:
 | Level | Where | Result |
 |---|---|---|
 | `kitty` | Kitty, Ghostty, WezTerm, Konsole | Diagrams, math and images as sharp pictures, through the Kitty graphics protocol |
-| `text` | Any terminal, e.g. Alacritty | Mermaid as box-drawing characters, math as Unicode, images as coloured half blocks |
+| `text` | Any terminal, e.g. Alacritty | Mermaid and Graphviz as box-drawing characters, math as Unicode, images as coloured half blocks |
 | Browser (`o`) | Anywhere | The original Mermaid, KaTeX and Graphviz renderers, with live reload |
 
 mdview picks `kitty` or `text` from the terminal it detects. `i` switches and
@@ -92,9 +95,10 @@ remembers your choice.
 
 Known limits:
 
-- Graphviz has no text mode. In `text` it is drawn at low resolution; open it
-  in the browser instead.
-- Complex Mermaid diagrams can come out crowded in `text` mode.
+- In `text` mode Graphviz graphs keep their nodes, edges and labels but not
+  their colours, shapes or exact layout.
+- Complex diagrams can come out crowded in `text` mode; `o` shows them in the
+  browser.
 - The browser preview loads Mermaid, KaTeX, highlight.js and Graphviz from a
   CDN, so it needs a connection the first time.
 - Windows is not supported yet.
@@ -162,7 +166,8 @@ cargo run -- examples/demo.md
 ```
 
 `examples/demo.md` walks through everything the viewer draws. Pushing a `v*`
-tag builds and publishes the release binaries.
+tag builds and publishes the release binaries. `docs/demo.gif` is recorded
+from `docs/demo.tape` with [VHS](https://github.com/charmbracelet/vhs).
 
 ## License
 

@@ -1,6 +1,6 @@
 id = "mdview"
 name = "Markdown Preview"
-version = "0.1.0"
+version = "0.1.1"
 min_herdr_version = "0.9.0"
 description = "Preview Markdown in a pane: Mermaid and Graphviz diagrams, LaTeX math, tables, syntax highlighting, live reload"
 platforms = ["linux", "macos"]

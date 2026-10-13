@@ -60,6 +60,106 @@ impl DiagramEngine for DotEngine {
         .map_err(|_| anyhow!("the Graphviz renderer failed on this graph"))?
         .map(|svg| recolor_dot(svg, palette))
     }
+
+    /// Text mode goes through Mermaid's text renderer: positions differ from
+    /// Graphviz's own layout, but the graph is readable in any terminal.
+    fn to_text(&self, source: &str, max_width: usize) -> Option<anyhow::Result<String>> {
+        let flowchart = dot_to_mermaid(source)?;
+        MermaidEngine.to_text(&flowchart, max_width)
+    }
+}
+
+/// Rewrites a DOT graph as a Mermaid flowchart: its nodes, edges and their
+/// labels, without styling. `None` when the source does not parse.
+fn dot_to_mermaid(source: &str) -> Option<String> {
+    use layout::gv::parser::ast::{ArrowKind, Graph, Stmt};
+
+    struct Flow {
+        ids: Vec<String>,
+        labels: Vec<Option<String>>,
+        edges: Vec<String>,
+    }
+
+    impl Flow {
+        fn node(&mut self, name: &str) -> usize {
+            match self.ids.iter().position(|id| id == name) {
+                Some(index) => index,
+                None => {
+                    self.ids.push(name.to_string());
+                    self.labels.push(None);
+                    self.ids.len() - 1
+                }
+            }
+        }
+
+        fn visit(&mut self, graph: &Graph) {
+            for statement in &graph.list.list {
+                match statement {
+                    Stmt::Node(node) => {
+                        let index = self.node(&node.id.name);
+                        if let Some((_, label)) = node.list.iter().find(|(k, _)| k == "label") {
+                            self.labels[index] = Some(label.clone());
+                        }
+                    }
+                    Stmt::Edge(edge) => {
+                        let label = edge
+                            .list
+                            .iter()
+                            .find(|(k, _)| k == "label")
+                            .map(|(_, label)| format!("|{}|", clean(label)))
+                            .unwrap_or_default();
+                        let mut from = self.node(&edge.from.name);
+                        for (to, kind) in &edge.to {
+                            let to = self.node(&to.name);
+                            let arrow = match kind {
+                                ArrowKind::Arrow => "-->",
+                                ArrowKind::Line => "---",
+                            };
+                            self.edges.push(format!("    n{from} {arrow}{label} n{to}"));
+                            from = to;
+                        }
+                    }
+                    Stmt::SubGraph(inner) => self.visit(inner),
+                    Stmt::Attribute(_) => {}
+                }
+            }
+        }
+    }
+
+    fn clean(label: &str) -> String {
+        label
+            .replace("\\n", " ")
+            .replace(['"', '|', '\n'], " ")
+            .trim()
+            .to_string()
+    }
+
+    let owned = source.to_string();
+    let graph = std::panic::catch_unwind(move || layout::gv::DotParser::new(&owned).process())
+        .ok()?
+        .ok()?;
+    let mut flow = Flow {
+        ids: Vec::new(),
+        labels: Vec::new(),
+        edges: Vec::new(),
+    };
+    flow.visit(&graph);
+    if flow.ids.is_empty() {
+        return None;
+    }
+    let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+    let direction = if compact.contains("rankdir=LR") || compact.contains("rankdir=\"LR\"") {
+        "LR"
+    } else {
+        "TD"
+    };
+    let mut out = format!("flowchart {direction}\n");
+    for (index, id) in flow.ids.iter().enumerate() {
+        let label = clean(flow.labels[index].as_deref().unwrap_or(id));
+        out.push_str(&format!("    n{index}[\"{label}\"]\n"));
+    }
+    out.push_str(&flow.edges.join("\n"));
+    Some(out)
 }
 
 /// The layout engine draws black on white. On a dark background the default
