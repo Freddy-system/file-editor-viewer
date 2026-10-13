@@ -39,6 +39,7 @@ fn graphviz_renders_to_pixels() {
         text.lines().count() < 12,
         "left-to-right graph should be shallow:\n{text}"
     );
+    assert!(!text.contains('"'), "labels must not keep quotes:\n{text}");
     assert!(engine.to_text("digraph {", 80).is_none());
 
     // Default black ink would vanish on a dark background.

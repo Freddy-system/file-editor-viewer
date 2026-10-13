@@ -126,12 +126,15 @@ fn dot_to_mermaid(source: &str) -> Option<String> {
         }
     }
 
+    /// Labels go into the flowchart unquoted, so the characters Mermaid
+    /// reads as node syntax are dropped.
     fn clean(label: &str) -> String {
         label
             .replace("\\n", " ")
-            .replace(['"', '|', '\n'], " ")
-            .trim()
-            .to_string()
+            .replace(['"', '|', '\n', '[', ']', '(', ')', '{', '}'], " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     let owned = source.to_string();
@@ -156,7 +159,7 @@ fn dot_to_mermaid(source: &str) -> Option<String> {
     let mut out = format!("flowchart {direction}\n");
     for (index, id) in flow.ids.iter().enumerate() {
         let label = clean(flow.labels[index].as_deref().unwrap_or(id));
-        out.push_str(&format!("    n{index}[\"{label}\"]\n"));
+        out.push_str(&format!("    n{index}[{label}]\n"));
     }
     out.push_str(&flow.edges.join("\n"));
     Some(out)
