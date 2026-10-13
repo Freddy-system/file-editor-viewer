@@ -1,0 +1,44 @@
+id = "mdview"
+name = "Markdown Preview"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Preview Markdown in a pane: Mermaid and Graphviz diagrams, LaTeX math, tables, syntax highlighting, live reload"
+platforms = ["linux", "macos"]
+
+# Needs a Rust toolchain (cargo) on PATH.
+[[build]]
+command = ["cargo", "build", "--release", "--bin", "mdview"]
+
+# The viewer. Opened by the actions below, which tell it what to show;
+# opened directly it shows the focused pane's README or a file picker.
+[[panes]]
+id = "preview"
+title = "Markdown"
+placement = "split"
+command = ["target/release/mdview", "herdr", "pane"]
+
+[[actions]]
+id = "open"
+title = "Preview Markdown (split)"
+contexts = ["workspace"]
+command = ["target/release/mdview", "herdr", "open", "--placement", "split"]
+
+[[actions]]
+id = "open-tab"
+title = "Preview Markdown (new tab)"
+contexts = ["workspace"]
+command = ["target/release/mdview", "herdr", "open", "--placement", "tab"]
+
+[[actions]]
+id = "open-overlay"
+title = "Preview Markdown (overlay)"
+contexts = ["workspace"]
+command = ["target/release/mdview", "herdr", "open", "--placement", "overlay"]
+
+# Ctrl-click a link to a local Markdown file to preview it. Web links are
+# left to the browser.
+[[link_handlers]]
+id = "markdown-file"
+title = "Preview Markdown file"
+pattern = "(?i)^(file://)?[^:]*\\.(md|markdown|mdx|mdown|mkd)(#[^#]*)?$"
+action = "open"

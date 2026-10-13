@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.92"
+
+[workspace.dependencies]
+mdview-core = { path = "crates/mdview-core" }
+mdview-render = { path = "crates/mdview-render" }
+mdview-tui = { path = "crates/mdview-tui" }
+mdview-web = { path = "crates/mdview-web" }
+anyhow = "1"
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
+
+[profile.dev.package."*"]
+opt-level = 2

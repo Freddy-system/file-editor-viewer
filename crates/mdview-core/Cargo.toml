@@ -1,0 +1,9 @@
+[package]
+name = "mdview-core"
+description = "Markdown parsing and document model shared by every mdview frontend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pulldown-cmark.workspace = true
