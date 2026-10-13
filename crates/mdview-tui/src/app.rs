@@ -31,36 +31,47 @@ use crate::Options;
 const MAX_TEXT_WIDTH: u16 = 120;
 const MAX_LISTED_FILES: usize = 5000;
 
-/// Keys of the document view, shown in the help panel.
-const VIEW_KEYS: &[(&str, &str)] = &[
-    ("?", "Hide help"),
-    ("q", "Quit"),
-    ("↑↓ j k", "Scroll"),
-    ("Space d u", "Page"),
-    ("g G", "Top/End"),
-    ("/", "Search"),
-    ("n N", "Next/Prev"),
-    ("Tab", "Link"),
-    ("Enter", "Follow"),
-    ("Bksp", "Back"),
-    ("t", "Contents"),
-    ("f", "Files"),
-    ("drag", "Select+copy"),
-    ("y", "Copy code"),
-    ("Y ^A", "Copy all"),
-    ("o", "Browser"),
-    ("i", "Images"),
-    ("c", "Colours"),
-    ("r", "Reload"),
+/// The help window: groups of keys and what they do.
+const HELP: &[(&str, &[(&str, &str)])] = &[
+    (
+        "Move",
+        &[
+            ("↑ ↓  j k  wheel", "Scroll"),
+            ("Space  d u", "Page, half page"),
+            ("g  G", "Top, bottom"),
+            ("t", "Table of contents"),
+            ("f", "Choose another file"),
+            ("Backspace", "Previous document"),
+        ],
+    ),
+    (
+        "Find and follow",
+        &[
+            ("/", "Search"),
+            ("n  N", "Next, previous match"),
+            ("Tab  Shift-Tab", "Select a link"),
+            ("Enter  click", "Follow the link"),
+        ],
+    ),
+    (
+        "Copy",
+        &[
+            ("drag", "Select text, copied on release"),
+            ("y  click on code", "Copy a code block"),
+            ("Y  Ctrl-A", "Copy the whole document"),
+        ],
+    ),
+    (
+        "View",
+        &[
+            ("o", "Open in the browser"),
+            ("i", "Images: kitty or text"),
+            ("c", "Light or dark colours"),
+            ("r", "Reload"),
+            ("q", "Quit"),
+        ],
+    ),
 ];
-const PICKER_KEYS: &[(&str, &str)] = &[
-    ("↑↓", "Move"),
-    ("Enter", "Open"),
-    ("Esc", "Back"),
-    ("type", "Filter"),
-];
-const TOC_KEYS: &[(&str, &str)] = &[("↑↓", "Move"), ("Enter", "Go"), ("Esc", "Close")];
-const SEARCH_KEYS: &[(&str, &str)] = &[("Enter", "Search"), ("Esc", "Cancel")];
 
 /// A position in the laid-out document: line and column.
 type Point = (usize, u16);
@@ -71,6 +82,7 @@ enum Mode {
     Picker,
     Toc,
     Search,
+    Help,
 }
 
 struct OpenDoc {
@@ -106,7 +118,6 @@ struct App {
     press: Option<Point>,
     /// Text selected by dragging, from where the drag began to where it is.
     selection: Option<(Point, Point)>,
-    help_open: bool,
     pending_anchor: Option<String>,
     message: Option<String>,
     server: Option<mdview_web::Server>,
@@ -144,7 +155,6 @@ pub fn run(options: Options) -> anyhow::Result<()> {
         link_focus: None,
         press: None,
         selection: None,
-        help_open: false,
         pending_anchor: None,
         message: None,
         server: None,
@@ -296,8 +306,16 @@ impl App {
     fn event_loop(&mut self, terminal: &mut ratatui::DefaultTerminal) -> anyhow::Result<()> {
         let mut dirty = true;
         let mut drawn_size = None;
+        let mut repaint = false;
         while !self.quit {
             if dirty {
+                if repaint {
+                    // The multiplexer may have reflowed or shifted what was
+                    // on screen, so nothing drawn before can be trusted.
+                    terminal.clear()?;
+                    self.kitty.forget_screen();
+                    repaint = false;
+                }
                 drawn_size = terminal.size().ok();
                 terminal.draw(|frame| self.draw(frame))?;
                 if self.graphics == Graphics::Kitty {
@@ -311,6 +329,7 @@ impl App {
                     match event::read()? {
                         Event::Key(key) if key.kind != KeyEventKind::Release => self.key(key),
                         Event::Mouse(mouse) => self.mouse(mouse),
+                        Event::Resize(..) | Event::FocusGained => repaint = true,
                         _ => {}
                     }
                     if self.quit || !event::poll(Duration::ZERO)? {
@@ -322,6 +341,7 @@ impl App {
             // A resize that lands while a slow first draw is still running
             // produces no event, so the size is also checked directly.
             if terminal.size().ok() != drawn_size {
+                repaint = true;
                 dirty = true;
             }
             let mut changed = false;
@@ -782,6 +802,7 @@ impl App {
             Mode::View => self.view_key(key),
             Mode::Picker => self.picker_key(key),
             Mode::Toc => self.toc_key(key),
+            Mode::Help => self.mode = Mode::View,
             Mode::Search => match key.code {
                 KeyCode::Esc => self.mode = Mode::View,
                 KeyCode::Enter => {
@@ -879,7 +900,7 @@ impl App {
                 self.reload();
                 self.message = Some("reloaded".into());
             }
-            KeyCode::Char('?') => self.help_open = !self.help_open,
+            KeyCode::Char('?') => self.mode = Mode::Help,
             _ => {}
         }
     }
@@ -1030,14 +1051,7 @@ impl App {
         if area.height < 2 || area.width < 10 {
             return;
         }
-        // Status line, plus the help panel while it is switched on.
-        let help = if self.help_open {
-            self.help_rows(area.width, area.height / 2)
-        } else {
-            Vec::new()
-        };
-        let bars = 1 + help.len() as u16;
-        let content = Rect::new(area.x, area.y, area.width, area.height - bars);
+        let content = Rect::new(area.x, area.y, area.width, area.height - 1);
         let status = Rect::new(area.x, content.y + content.height, area.width, 1);
         self.placements.clear();
         if self.mode == Mode::Picker {
@@ -1045,50 +1059,88 @@ impl App {
         } else {
             self.draw_document(frame, content);
         }
-        if self.mode == Mode::Toc {
-            self.draw_toc(frame, content);
+        match self.mode {
+            Mode::Toc => self.draw_toc(frame, content),
+            Mode::Help => self.draw_help(frame, content),
+            _ => {}
         }
         // Terminal-drawn images sit above text, so they would cover a popup.
-        if matches!(self.mode, Mode::Toc | Mode::Picker) {
+        if matches!(self.mode, Mode::Toc | Mode::Help | Mode::Picker) {
             self.placements.clear();
         }
         self.draw_status(frame.buffer_mut(), status);
-        for (n, line) in help.iter().enumerate() {
-            frame
-                .buffer_mut()
-                .set_line(area.x, status.y + 1 + n as u16, line, area.width);
-        }
     }
 
-    /// The keys of the current mode, wrapped to `width` in at most
-    /// `max_rows` rows.
-    fn help_rows(&self, width: u16, max_rows: u16) -> Vec<Line<'static>> {
-        let keys = match self.mode {
-            Mode::View => VIEW_KEYS,
-            Mode::Picker => PICKER_KEYS,
-            Mode::Toc => TOC_KEYS,
-            Mode::Search => SEARCH_KEYS,
-        };
-        let key = Style::new()
-            .fg(self.theme.bar_fg)
-            .bg(self.theme.bar_bg)
-            .add_modifier(Modifier::BOLD);
-        let label = Style::new().fg(self.theme.dim);
-        let mut rows: Vec<Vec<Span<'static>>> = vec![vec![Span::raw(" ")]];
-        let mut used = 1;
-        for (name, what) in keys {
-            let needed = name.width() + what.width() + 5;
-            if used > 1 && used + needed > width as usize {
-                rows.push(vec![Span::raw(" ")]);
-                used = 1;
+    /// The help window: every key, grouped, in one or two columns.
+    fn draw_help(&mut self, frame: &mut Frame, area: Rect) {
+        let theme = &self.theme;
+        let key_width = HELP
+            .iter()
+            .flat_map(|(_, keys)| keys.iter())
+            .map(|(key, _)| key.width())
+            .max()
+            .unwrap_or(0);
+        let text_width = HELP
+            .iter()
+            .flat_map(|(_, keys)| keys.iter())
+            .map(|(_, what)| what.width())
+            .max()
+            .unwrap_or(0);
+        let column_width = key_width + text_width + 3;
+        let group = |(title, keys): &(&str, &[(&str, &str)])| {
+            let mut lines = vec![Line::from(Span::styled(
+                title.to_string(),
+                Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
+            ))];
+            for (key, what) in keys.iter() {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("{key:<key_width$}"),
+                        Style::new().fg(theme.code).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(format!("   {what}")),
+                ]));
             }
-            used += needed;
-            let row = rows.last_mut().expect("rows is never empty");
-            row.push(Span::styled(format!(" {name} "), key));
-            row.push(Span::styled(format!(" {what}  "), label));
+            lines.push(Line::default());
+            lines
+        };
+        let groups: Vec<Vec<Line>> = HELP.iter().map(group).collect();
+        let two_columns = area.width as usize >= column_width * 2 + 12;
+        let mut lines: Vec<Line> = Vec::new();
+        if two_columns {
+            let split = groups.len().div_ceil(2);
+            let left: Vec<Line> = groups[..split].iter().flatten().cloned().collect();
+            let right: Vec<Line> = groups[split..].iter().flatten().cloned().collect();
+            for row in 0..left.len().max(right.len()) {
+                let mut spans = left.get(row).map(|l| l.spans.clone()).unwrap_or_default();
+                let used: usize = spans.iter().map(|s| s.content.width()).sum();
+                spans.push(Span::raw(" ".repeat(column_width + 4 - used)));
+                spans.extend(right.get(row).map(|l| l.spans.clone()).unwrap_or_default());
+                lines.push(Line::from(spans));
+            }
+        } else {
+            lines.extend(groups.into_iter().flatten());
         }
-        rows.truncate(max_rows as usize);
-        rows.into_iter().map(Line::from).collect()
+        while lines.last().is_some_and(|l| l.spans.is_empty()) {
+            lines.pop();
+        }
+        let inner_width = if two_columns {
+            column_width * 2 + 4
+        } else {
+            column_width
+        };
+        let rect = popup(area, inner_width as u16 + 6, lines.len() as u16 + 4);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_style(Style::new().fg(theme.accent))
+            .padding(ratatui::widgets::Padding::new(2, 2, 1, 1))
+            .title(Span::styled(
+                " Keys ",
+                Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
+            ))
+            .title_bottom(Span::styled(" any key closes ", Style::new().fg(theme.dim)));
+        frame.render_widget(Clear, rect);
+        frame.render_widget(Paragraph::new(lines).block(block), rect);
     }
 
     fn draw_document(&mut self, frame: &mut Frame, area: Rect) {
@@ -1291,7 +1343,8 @@ impl App {
             (None, _) => String::new(),
         };
         let right = match (&self.doc, self.mode) {
-            (_, Mode::Picker) => String::new(),
+            (_, Mode::Picker) => " ↑↓ move · Enter open · Esc back ".to_string(),
+            (_, Mode::Toc) => " ↑↓ move · Enter go · Esc close ".to_string(),
             (Some(doc), _) => {
                 let total = doc.rendered.lines.len().max(1);
                 let bottom = (doc.scroll + self.view.height as usize).min(total);

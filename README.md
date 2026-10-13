@@ -72,7 +72,7 @@ description = "vista previa de Markdown"
 | `o` | Abrir en el navegador |
 | `i` | Cambiar modo de imágenes (`kitty` / `text`) |
 | `c` | Colores claros / oscuros |
-| `?` | Mostrar u ocultar el panel de ayuda con todas las teclas |
+| `?` | Ventana de ayuda con todas las teclas |
 | `r`, `q` | Recargar, salir |
 
 ## Diagramas e imágenes: tres niveles

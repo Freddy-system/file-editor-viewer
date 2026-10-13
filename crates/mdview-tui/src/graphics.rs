@@ -277,6 +277,12 @@ impl KittyScreen {
         out.flush()
     }
 
+    /// Makes the next [`show`](Self::show) place everything again, for when
+    /// the screen was cleared behind our back.
+    pub fn forget_screen(&mut self) {
+        self.shown = None;
+    }
+
     /// Frees images that the current document no longer uses.
     pub fn retain(&mut self, out: &mut impl Write, keys: &[u64]) -> io::Result<()> {
         let stale: Vec<u64> = self
