@@ -71,7 +71,7 @@ description = "vista previa de Markdown"
 | `t` | Índice del documento |
 | `b` | Árbol de archivos lateral |
 | `f` | Selector de archivos |
-| `e` | Editar el archivo con el editor integrado y vista previa en vivo |
+| `e` | Editar el archivo con el editor integrado |
 | Arrastrar con el ratón | Seleccionar texto; al soltar queda copiado |
 | `y`, clic sobre un bloque de código | Copiar el bloque al portapapeles |
 | `Y`, `Ctrl+A` | Copiar el documento entero (fuente Markdown) |
@@ -84,8 +84,8 @@ description = "vista previa de Markdown"
 ## Edición
 
 El visor es de solo lectura hasta que pulsas `e`. Entonces abre un editor
-integrado en la sección que estabas leyendo; si el panel es ancho, la vista
-previa queda al lado y sigue lo que escribes. Funciona como un cuadro de texto
+integrado en la sección que estabas leyendo, que ocupa todo el panel; al salir
+vuelves al documento ya dibujado. Funciona como un cuadro de texto
 normal, sin modos y sin instalar ningún editor externo.
 
 | Tecla | Acción |

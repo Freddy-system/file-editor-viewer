@@ -1278,7 +1278,7 @@ dependencies = [
 
 [[package]]
 name = "mdview"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1291,14 +1291,14 @@ dependencies = [
 
 [[package]]
 name = "mdview-core"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "pulldown-cmark",
 ]
 
 [[package]]
 name = "mdview-render"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "image",
@@ -1314,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "mdview-tui"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1332,7 +1332,7 @@ dependencies = [
 
 [[package]]
 name = "mdview-web"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "mdview-core",

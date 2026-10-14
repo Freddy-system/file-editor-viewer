@@ -20,7 +20,7 @@ gets.
 - **Made for reading docs**: table of contents, search, links between
   documents, a file tree, click to copy a code block.
 - **Read-only by default, with an editor built in**: press `e` to edit the
-  file with a live preview beside it. Nothing else to install.
+  file. Nothing else to install.
 - **Source files too**: links to code open as a highlighted, numbered listing.
 
 ## Install as a herdr plugin
@@ -87,8 +87,8 @@ Press `?` in the viewer for this list.
 ## Editing
 
 The viewer never changes a file until you ask. `e` opens the built-in editor
-on the section you are reading; on a wide pane the preview stays beside it and
-follows what you type. It works like a plain text box: no modes, no setup, no
+on the section you are reading, using the whole pane; leaving it shows the
+rendered document again. It works like a plain text box: no modes, no setup, no
 external editor.
 
 | Key | Action |

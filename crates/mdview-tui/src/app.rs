@@ -129,7 +129,6 @@ struct App {
     pending_anchor: Option<String>,
     /// The built-in editor, while the document is being edited.
     editor: Option<Editor>,
-    editor_area: Rect,
     /// The file tree sidebar, loaded the first time it is shown.
     tree: Option<Tree>,
     tree_open: bool,
@@ -173,7 +172,6 @@ pub fn run(options: Options) -> anyhow::Result<()> {
         selection: None,
         pending_anchor: None,
         editor: None,
-        editor_area: Rect::default(),
         tree: None,
         tree_open: false,
         tree_focus: false,
@@ -454,7 +452,8 @@ impl App {
 
     /// Re-reads the current document after it changed on disk.
     fn reload(&mut self) {
-        // While editing, the preview follows the editor, not the disk.
+        // The editor holds the text while it is open; the document is read
+        // again when it closes.
         if self.editor.is_some() {
             return;
         }
@@ -496,15 +495,10 @@ impl App {
     /// Reacts to what the editor did with an event.
     fn apply(&mut self, outcome: Outcome) {
         match outcome {
-            Outcome::None => {}
-            Outcome::Changed => self.preview_edit(),
-            Outcome::Saved => {
-                self.preview_edit();
-                self.message = Some("saved".into());
-            }
+            Outcome::None | Outcome::Changed => {}
+            Outcome::Saved => self.message = Some("saved".into()),
             Outcome::Copied(text) => {
                 copy_to_clipboard(&text);
-                self.preview_edit();
                 self.message = Some(format!("copied {} characters", text.chars().count()));
             }
             Outcome::Notice(notice) => self.message = Some(notice),
@@ -514,17 +508,6 @@ impl App {
                 self.reload();
             }
         }
-    }
-
-    /// Shows the editor's text in the preview, saved or not.
-    fn preview_edit(&mut self) {
-        let (Some(editor), Some(doc)) = (&self.editor, &mut self.doc) else {
-            return;
-        };
-        let text = editor.text();
-        doc.doc = parse_document(&doc.path, &text, doc.listing);
-        doc.source = text;
-        doc.width = 0;
     }
 
     /// Shows the file tree and moves to it; from the tree, hides it.
@@ -1356,32 +1339,11 @@ impl App {
         Rect::new(area.x + width, area.y, area.width - width, area.height)
     }
 
-    /// The editor, with the live preview beside it when the pane is wide
-    /// enough for both.
+    /// The editor takes the whole document area: while editing there is
+    /// nothing else on screen to compete with the text.
     fn draw_editor(&mut self, frame: &mut Frame, area: Rect) {
-        let split = area.width >= 100;
-        let editor_area = if split {
-            Rect::new(area.x, area.y, area.width / 2, area.height)
-        } else {
-            area
-        };
         if let Some(editor) = &mut self.editor {
-            let block = Block::new()
-                .borders(if split { Borders::RIGHT } else { Borders::NONE })
-                .border_style(Style::new().fg(self.theme.border));
-            let inner = block.inner(editor_area);
-            frame.render_widget(block, editor_area);
-            editor.render(inner, frame.buffer_mut());
-            self.editor_area = inner;
-        }
-        if split {
-            let preview = Rect::new(
-                area.x + editor_area.width,
-                area.y,
-                area.width - editor_area.width,
-                area.height,
-            );
-            self.draw_document(frame, preview);
+            editor.render(area, frame.buffer_mut());
         }
     }
 
@@ -1479,13 +1441,6 @@ impl App {
         let Some(doc) = &mut self.doc else {
             return;
         };
-        // While editing, the preview stays near the line being written.
-        if let Some(editor) = &self.editor {
-            let (line, _) = editor.cursor();
-            let source_lines = doc.source.lines().count().max(1);
-            let target = (line - 1) * doc.rendered.lines.len() / source_lines;
-            doc.scroll = target.saturating_sub(view.height as usize / 3);
-        }
         doc.scroll = doc.scroll.min(
             doc.rendered
                 .lines
