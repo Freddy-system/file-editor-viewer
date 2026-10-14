@@ -71,7 +71,10 @@ Press `?` in the viewer for this list.
 |---|---|
 | `j` `k` `↑` `↓`, wheel | Scroll |
 | `Space`, `d` `u`, `PgUp` `PgDn` | Page, half page |
+| `Alt-↑` `Alt-↓` | Page up, page down |
+| `Ctrl-↑` `Ctrl-↓` | Previous, next section |
 | `g` `G` | Top, bottom |
+| `0` … `9` | Jump to a tenth of the document: `5` the middle, `9` near the end |
 | `/`, `n` `N` | Search this page, next and previous match |
 | `/@name` | Find a file by name and open it |
 | `Tab`, `Shift-Tab`, `Enter`, click | Select and follow links, across documents and to headings |

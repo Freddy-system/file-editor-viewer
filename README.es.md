@@ -66,7 +66,10 @@ description = "vista previa de Markdown"
 |---|---|
 | `j` `k` `↑` `↓`, rueda | Desplazar |
 | `d` `u`, `Espacio`, `RePág` `AvPág` | Media página / página |
+| `Alt-↑` `Alt-↓` | Página arriba, página abajo |
+| `Ctrl-↑` `Ctrl-↓` | Sección anterior, siguiente |
 | `g` `G` | Inicio / final |
+| `0` … `9` | Saltar a una décima parte: `5` la mitad, `9` casi al final |
 | `/`, `n` `N` | Buscar, coincidencia siguiente / anterior |
 | `/@nombre` | Buscar un archivo por nombre y abrirlo |
 | `Tab`, `Mayús-Tab`, `Enter`, clic | Elegir y seguir enlaces (entre documentos y a títulos) |

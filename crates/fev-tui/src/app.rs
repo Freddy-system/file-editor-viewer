@@ -40,8 +40,11 @@ const HELP: &[(&str, &[(&str, &str)])] = &[
         "Move",
         &[
             ("↑ ↓  j k  wheel", "Scroll"),
-            ("Space  d u", "Page, half page"),
+            ("Space  Alt-↑↓", "Page down, page up/down"),
+            ("d  u", "Half page"),
+            ("Ctrl-↑↓", "Previous, next section"),
             ("g  G", "Top, bottom"),
+            ("0 … 9", "Jump: 5 middle, 9 near the end"),
             ("t", "Table of contents"),
             ("b", "File tree"),
             ("Backspace", "Previous document"),
@@ -570,6 +573,8 @@ impl App {
             return;
         };
         match key.code {
+            KeyCode::Up if key.modifiers.contains(KeyModifiers::ALT) => tree.move_by(-10),
+            KeyCode::Down if key.modifiers.contains(KeyModifiers::ALT) => tree.move_by(10),
             KeyCode::Up | KeyCode::Char('k') => tree.move_by(-1),
             KeyCode::Down | KeyCode::Char('j') => tree.move_by(1),
             KeyCode::PageUp => tree.move_by(-10),
@@ -756,6 +761,42 @@ impl App {
         if line < scroll || line >= scroll + page {
             self.scroll_to(line.saturating_sub(page / 3));
         }
+    }
+
+    /// Jumps to the start of the next or previous section.
+    fn next_heading(&mut self, forward: bool) {
+        let Some(doc) = &self.doc else {
+            return;
+        };
+        let scroll = doc.scroll;
+        let target = if forward {
+            doc.rendered
+                .toc
+                .iter()
+                .map(|e| e.2)
+                .find(|line| *line > scroll)
+        } else {
+            doc.rendered
+                .toc
+                .iter()
+                .map(|e| e.2)
+                .rev()
+                .find(|line| *line < scroll)
+        };
+        match target {
+            Some(line) => self.scroll_to(line),
+            None if forward => self.scroll_to(usize::MAX),
+            None => self.scroll_to(0),
+        }
+    }
+
+    /// `0` is the top, `5` the middle, `9` near the end.
+    fn scroll_to_tenth(&mut self, tenth: usize) {
+        let Some(doc) = &self.doc else {
+            return;
+        };
+        let lines = doc.rendered.lines.len();
+        self.scroll_to(lines * tenth / 10);
     }
 
     fn next_match(&mut self, forward: bool) {
@@ -1160,6 +1201,16 @@ impl App {
             }
             KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => self.copy_all(),
             KeyCode::Char('Y') => self.copy_all(),
+            // Alt moves by pages, Ctrl by sections, digits by tenths.
+            KeyCode::Down if key.modifiers.contains(KeyModifiers::ALT) => self.scroll_by(page - 1),
+            KeyCode::Up if key.modifiers.contains(KeyModifiers::ALT) => self.scroll_by(1 - page),
+            KeyCode::Down if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.next_heading(true)
+            }
+            KeyCode::Up if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.next_heading(false)
+            }
+            KeyCode::Char(digit @ '0'..='9') => self.scroll_to_tenth(digit as usize - '0' as usize),
             KeyCode::Char('j') | KeyCode::Down => self.scroll_by(1),
             KeyCode::Char('k') | KeyCode::Up => self.scroll_by(-1),
             KeyCode::Char('d') => self.scroll_by(page / 2),
