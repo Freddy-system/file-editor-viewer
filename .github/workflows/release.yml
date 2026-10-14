@@ -8,8 +8,20 @@ permissions:
   contents: write
 
 jobs:
+  # Created once, before the builds, so parallel uploads do not race to
+  # create the same release.
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+
   build:
     name: ${{ matrix.target }}
+    needs: release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -45,9 +57,7 @@ jobs:
           else
             shasum -a 256 "$archive" > "$archive.sha256"
           fi
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            fev-${{ matrix.target }}.tar.gz
-            fev-${{ matrix.target }}.tar.gz.sha256
-          generate_release_notes: true
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" "fev-${{ matrix.target }}.tar.gz" "fev-${{ matrix.target }}.tar.gz.sha256" --clobber
