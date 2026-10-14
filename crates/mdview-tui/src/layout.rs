@@ -152,6 +152,8 @@ pub struct LayoutOptions<'a> {
     pub cell: (u32, u32),
     /// Directory relative links and images resolve against.
     pub base_dir: &'a Path,
+    /// Number the lines of code blocks, for showing a source file.
+    pub line_numbers: bool,
 }
 
 pub fn layout(doc: &Document, options: &LayoutOptions, assets: &mut Assets) -> Rendered {
@@ -591,7 +593,16 @@ impl Layouter<'_> {
     ) -> Vec<RLine> {
         let theme = self.theme().clone();
         let background = Style::new().bg(theme.code_bg);
-        let inner = width.saturating_sub(2).max(1) as usize;
+        // Line numbers sit in a gutter as wide as the largest one, taken out
+        // of the room for code.
+        let numbers = Style::new().bg(theme.code_bg).fg(theme.dim);
+        let digits = code.split('\n').count().to_string().len();
+        let blank_gutter = self
+            .options
+            .line_numbers
+            .then(|| Span::styled(format!("{:digits$} │ ", ""), numbers));
+        let gutter = blank_gutter.as_ref().map_or(0, |span| span.content.width());
+        let inner = (width as usize).saturating_sub(2 + gutter).max(1);
         let mut lines = Vec::new();
         // Header: the language on the left, a copy button on the right.
         let label = truncate(
@@ -617,19 +628,24 @@ impl Layouter<'_> {
             syntax,
             &self.assets.themes.themes[theme.syntax_theme],
         );
-        for source_line in code.split('\n') {
+        for (number, source_line) in code.split('\n').enumerate() {
             let source_line = source_line.replace('\t', "    ");
             let with_newline = format!("{source_line}\n");
             let ranges = highlighter
                 .highlight_line(&with_newline, &self.assets.syntaxes)
                 .unwrap_or_default();
             let mut row: Vec<Span<'static>> = vec![Span::styled(" ", background)];
+            if blank_gutter.is_some() {
+                row.push(Span::styled(format!("{:>digits$} │ ", number + 1), numbers));
+            }
             let mut used = 0;
             let flush = |row: &mut Vec<Span<'static>>, lines: &mut Vec<RLine>| {
                 let mut line = RLine::from_spans(std::mem::take(row));
                 line.pad_to(width, background);
                 lines.push(line);
                 row.push(Span::styled(" ", background));
+                // Continuation rows keep the gutter, without a number.
+                row.extend(blank_gutter.clone());
             };
             for (style, text) in ranges {
                 let color = Color::Rgb(style.foreground.r, style.foreground.g, style.foreground.b);
@@ -1203,6 +1219,15 @@ mod tests {
     use super::*;
 
     fn render(source: &str, width: u16, graphics: Graphics) -> Rendered {
+        render_with(source, width, graphics, false)
+    }
+
+    /// A listing: code blocks with their lines numbered.
+    fn numbered(source: &str, width: u16) -> Rendered {
+        render_with(source, width, Graphics::Text, true)
+    }
+
+    fn render_with(source: &str, width: u16, graphics: Graphics, line_numbers: bool) -> Rendered {
         let theme = Theme::dark();
         let options = LayoutOptions {
             width,
@@ -1210,6 +1235,7 @@ mod tests {
             graphics,
             cell: DEFAULT_CELL,
             base_dir: Path::new("."),
+            line_numbers,
         };
         layout(
             &mdview_core::parse(source),
@@ -1344,6 +1370,51 @@ mod tests {
             "{:#?}",
             texts(&rendered)
         );
+    }
+
+    #[test]
+    fn numbered_listings_fill_their_width_behind_a_gutter() {
+        let rendered = numbered("```rust\nfn main() {}\n```\n", 24);
+        let lines = texts(&rendered);
+        assert!(lines[0].contains("rust") && lines[0].contains("[ copy ]"));
+        assert!(lines[1].starts_with(" 1 │ fn main() {}"), "{lines:#?}");
+        assert!(rendered.lines.iter().all(|l| l.width() == 24), "{lines:#?}");
+
+        let source: Vec<String> = (1..=12).map(|n| format!("l{n}")).collect();
+        let rendered = numbered(&format!("```txt\n{}\n```\n", source.join("\n")), 30);
+        let lines = texts(&rendered);
+        assert!(lines[1].starts_with("  1 │ l1"), "{lines:#?}");
+        assert!(lines[3].starts_with("  3 │ l3"), "{lines:#?}");
+        assert!(lines[12].starts_with(" 12 │ l12"), "{lines:#?}");
+        assert!(rendered.lines.iter().all(|l| l.width() == 30), "{lines:#?}");
+    }
+
+    #[test]
+    fn wrapped_listing_lines_are_numbered_once() {
+        let rendered = numbered("```txt\nshort\nabcdefghijklmnopqrstuvwxyz0123\n```\n", 24);
+        let lines = texts(&rendered);
+        assert!(lines[1].starts_with(" 1 │ short"), "{lines:#?}");
+        assert_eq!(lines[2], " 2 │ abcdefghijklmnopqr ", "{lines:#?}");
+        assert!(lines[3].starts_with("   │ stuvwxyz0123"), "{lines:#?}");
+        assert!(rendered.lines.iter().all(|l| l.width() == 24), "{lines:#?}");
+    }
+
+    #[test]
+    fn copied_code_carries_no_line_numbers() {
+        let rendered = numbered("```txt\none\ntwo\n```\n", 24);
+        assert!(rendered.lines.iter().all(|l| l.code == Some(0)));
+        assert_eq!(rendered.codes.len(), 1);
+        assert!(rendered.codes[0].starts_with("one\ntwo"));
+        assert!(!rendered.codes[0].contains('│'));
+        assert!(!rendered.codes[0].contains('1'));
+    }
+
+    #[test]
+    fn code_blocks_have_no_gutter_unless_numbered() {
+        let rendered = render("```txt\none\ntwo\n```\n", 24, Graphics::Text);
+        let lines = texts(&rendered);
+        assert!(lines.iter().all(|l| !l.contains('│')), "{lines:#?}");
+        assert!(lines[1].starts_with(" one"), "{lines:#?}");
     }
 
     #[test]

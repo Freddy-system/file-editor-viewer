@@ -69,7 +69,9 @@ description = "vista previa de Markdown"
 | `Tab`, `Mayús-Tab`, `Enter`, clic | Elegir y seguir enlaces (entre documentos y a títulos) |
 | `Retroceso` | Volver al documento anterior |
 | `t` | Índice del documento |
+| `b` | Árbol de archivos lateral |
 | `f` | Selector de archivos |
+| `e` | Editar el archivo con el editor integrado y vista previa en vivo |
 | Arrastrar con el ratón | Seleccionar texto; al soltar queda copiado |
 | `y`, clic sobre un bloque de código | Copiar el bloque al portapapeles |
 | `Y`, `Ctrl+A` | Copiar el documento entero (fuente Markdown) |
@@ -78,6 +80,27 @@ description = "vista previa de Markdown"
 | `c` | Colores claros / oscuros |
 | `?` | Ventana de ayuda con todas las teclas |
 | `r`, `q` | Recargar, salir |
+
+## Edición
+
+El visor es de solo lectura hasta que pulsas `e`. Entonces abre un editor
+integrado en la sección que estabas leyendo; si el panel es ancho, la vista
+previa queda al lado y sigue lo que escribes. Funciona como un cuadro de texto
+normal, sin modos y sin instalar ningún editor externo.
+
+| Tecla | Acción |
+|---|---|
+| `Ctrl-S` | Guardar |
+| `Esc`, `Ctrl-Q` | Volver a leer; avisa si hay cambios sin guardar |
+| `Ctrl-Z`, `Ctrl-Y` | Deshacer, rehacer |
+| `Mayús`+flechas, `Ctrl-A` | Seleccionar, seleccionar todo |
+| `Ctrl-C`, `Ctrl-X`, `Ctrl-V` | Copiar, cortar, pegar |
+| `Ctrl-K` | Borrar la línea |
+| Clic, rueda | Mover el cursor, desplazar |
+| `F1` | Todas las teclas del editor |
+
+Los enlaces a archivos de código se abren en el propio visor, como listado
+resaltado y con números de línea.
 
 ## Diagramas e imágenes: tres niveles
 

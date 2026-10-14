@@ -9,8 +9,8 @@ use mdview_core::{is_markdown_path, Document};
 use notify::{RecursiveMode, Watcher};
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
-    KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use ratatui::crossterm::execute;
 use ratatui::layout::Rect;
@@ -20,11 +20,14 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragra
 use ratatui::Frame;
 use unicode_width::UnicodeWidthStr;
 
+use crate::editor::{Editor, Outcome};
 use crate::graphics::{Graphics, KittyScreen, Placement};
 use crate::layout::{
     layout, percent_decode, resolve_local, Assets, LayoutOptions, Rendered, DEFAULT_CELL,
 };
+use crate::source;
 use crate::theme::Theme;
+use crate::tree::Tree;
 use crate::Options;
 
 /// Text is easier to read in a bounded column than across a very wide pane.
@@ -40,6 +43,7 @@ const HELP: &[(&str, &[(&str, &str)])] = &[
             ("Space  d u", "Page, half page"),
             ("g  G", "Top, bottom"),
             ("t", "Table of contents"),
+            ("b", "File tree"),
             ("f", "Choose another file"),
             ("Backspace", "Previous document"),
         ],
@@ -64,6 +68,7 @@ const HELP: &[(&str, &[(&str, &str)])] = &[
     (
         "View",
         &[
+            ("e", "Edit this file"),
             ("o", "Open in the browser"),
             ("i", "Images: kitty or text"),
             ("c", "Light or dark colours"),
@@ -83,11 +88,14 @@ enum Mode {
     Toc,
     Search,
     Help,
+    Edit,
 }
 
 struct OpenDoc {
     path: PathBuf,
     source: String,
+    /// A non-Markdown file, shown as a numbered listing.
+    listing: bool,
     doc: Document,
     rendered: Rendered,
     /// Width `rendered` was laid out for; 0 forces a new layout.
@@ -119,6 +127,14 @@ struct App {
     /// Text selected by dragging, from where the drag began to where it is.
     selection: Option<(Point, Point)>,
     pending_anchor: Option<String>,
+    /// The built-in editor, while the document is being edited.
+    editor: Option<Editor>,
+    editor_area: Rect,
+    /// The file tree sidebar, loaded the first time it is shown.
+    tree: Option<Tree>,
+    tree_open: bool,
+    tree_focus: bool,
+    tree_area: Rect,
     message: Option<String>,
     server: Option<mdview_web::Server>,
     watcher: Option<notify::RecommendedWatcher>,
@@ -156,6 +172,12 @@ pub fn run(options: Options) -> anyhow::Result<()> {
         press: None,
         selection: None,
         pending_anchor: None,
+        editor: None,
+        editor_area: Rect::default(),
+        tree: None,
+        tree_open: false,
+        tree_focus: false,
+        tree_area: Rect::default(),
         message: None,
         server: None,
         watcher: None,
@@ -182,7 +204,9 @@ pub fn run(options: Options) -> anyhow::Result<()> {
     if mouse {
         let _ = execute!(stdout(), EnableMouseCapture);
     }
+    let _ = execute!(stdout(), EnableBracketedPaste);
     let result = app.event_loop(&mut terminal);
+    let _ = execute!(stdout(), DisableBracketedPaste);
     let _ = app.kitty.clear(&mut stdout());
     if mouse {
         let _ = execute!(stdout(), DisableMouseCapture);
@@ -283,6 +307,38 @@ fn slice_columns(text: &str, from: u16, to: u16) -> &str {
     &text[start.min(end)..end]
 }
 
+/// Markdown is parsed; any other text file becomes one numbered listing.
+fn parse_document(path: &Path, text: &str, listing: bool) -> Document {
+    if listing {
+        source::document(path, text)
+    } else {
+        mdview_core::parse(text)
+    }
+}
+
+/// 1-based source line of the `index`-th heading written with `#`s, skipping
+/// fenced code.
+fn heading_source_line(source: &str, index: usize) -> Option<usize> {
+    let mut fence: Option<&str> = None;
+    let mut seen = 0;
+    for (number, line) in source.lines().enumerate() {
+        let trimmed = line.trim_start();
+        let marker = ["```", "~~~"].into_iter().find(|m| trimmed.starts_with(m));
+        match (fence, marker) {
+            (None, Some(marker)) => fence = Some(marker),
+            (Some(open), Some(marker)) if open == marker => fence = None,
+            (None, None) if trimmed.starts_with('#') && line.len() - trimmed.len() < 4 => {
+                if seen == index {
+                    return Some(number + 1);
+                }
+                seen += 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn fuzzy_match(candidate: &str, filter: &str) -> bool {
     let mut chars = candidate.chars().flat_map(char::to_lowercase);
     filter
@@ -329,6 +385,12 @@ impl App {
                     match event::read()? {
                         Event::Key(key) if key.kind != KeyEventKind::Release => self.key(key),
                         Event::Mouse(mouse) => self.mouse(mouse),
+                        Event::Paste(text) => {
+                            if let Some(editor) = &mut self.editor {
+                                let outcome = editor.paste(&text);
+                                self.apply(outcome);
+                            }
+                        }
                         Event::Resize(..) | Event::FocusGained => repaint = true,
                         _ => {}
                     }
@@ -363,12 +425,18 @@ impl App {
         let path = path
             .canonicalize()
             .with_context(|| format!("cannot open {}", path.display()))?;
-        let source = std::fs::read_to_string(&path)
-            .with_context(|| format!("cannot read {}", path.display()))?;
+        let listing = !is_markdown_path(&path);
+        let source = if listing {
+            source::read(&path)?
+        } else {
+            std::fs::read_to_string(&path)
+                .with_context(|| format!("cannot read {}", path.display()))?
+        };
         self.doc = Some(OpenDoc {
             path: path.clone(),
-            doc: mdview_core::parse(&source),
+            doc: parse_document(&path, &source, listing),
             source,
+            listing,
             rendered: Rendered::default(),
             width: 0,
             scroll: 0,
@@ -377,12 +445,19 @@ impl App {
         self.link_focus = None;
         self.search.clear();
         self.mode = Mode::View;
+        if let Some(tree) = &mut self.tree {
+            tree.reveal(&path);
+        }
         self.watch(&path);
         Ok(())
     }
 
     /// Re-reads the current document after it changed on disk.
     fn reload(&mut self) {
+        // While editing, the preview follows the editor, not the disk.
+        if self.editor.is_some() {
+            return;
+        }
         let Some(doc) = &mut self.doc else {
             return;
         };
@@ -390,10 +465,123 @@ impl App {
         let Ok(source) = std::fs::read_to_string(&doc.path) else {
             return;
         };
-        doc.doc = mdview_core::parse(&source);
+        doc.doc = parse_document(&doc.path, &source, doc.listing);
         doc.source = source;
         doc.width = 0;
         self.link_focus = None;
+    }
+
+    /// Opens the built-in editor on the current file, at the part being read.
+    fn start_edit(&mut self) {
+        let Some(doc) = &self.doc else {
+            return;
+        };
+        let line = if doc.listing {
+            doc.scroll.max(1)
+        } else {
+            doc.rendered
+                .toc
+                .iter()
+                .rposition(|entry| entry.2 <= doc.scroll)
+                .and_then(|index| heading_source_line(&doc.source, index))
+                .unwrap_or(1)
+        };
+        self.editor = Some(Editor::new(&doc.path, &doc.source, line, &self.theme));
+        self.mode = Mode::Edit;
+        self.selection = None;
+        self.link_focus = None;
+        self.tree_focus = false;
+    }
+
+    /// Reacts to what the editor did with an event.
+    fn apply(&mut self, outcome: Outcome) {
+        match outcome {
+            Outcome::None => {}
+            Outcome::Changed => self.preview_edit(),
+            Outcome::Saved => {
+                self.preview_edit();
+                self.message = Some("saved".into());
+            }
+            Outcome::Copied(text) => {
+                copy_to_clipboard(&text);
+                self.preview_edit();
+                self.message = Some(format!("copied {} characters", text.chars().count()));
+            }
+            Outcome::Notice(notice) => self.message = Some(notice),
+            Outcome::Close => {
+                self.editor = None;
+                self.mode = Mode::View;
+                self.reload();
+            }
+        }
+    }
+
+    /// Shows the editor's text in the preview, saved or not.
+    fn preview_edit(&mut self) {
+        let (Some(editor), Some(doc)) = (&self.editor, &mut self.doc) else {
+            return;
+        };
+        let text = editor.text();
+        doc.doc = parse_document(&doc.path, &text, doc.listing);
+        doc.source = text;
+        doc.width = 0;
+    }
+
+    /// Shows the file tree and moves to it; from the tree, hides it.
+    fn toggle_tree(&mut self) {
+        if self.tree_open && self.tree_focus {
+            self.tree_open = false;
+            self.tree_focus = false;
+            return;
+        }
+        let tree = self
+            .tree
+            .get_or_insert_with(|| Tree::load(&self.root, false));
+        if tree.is_empty() {
+            self.message = Some(format!("no Markdown files in {}", self.root.display()));
+            return;
+        }
+        if let Some(doc) = &self.doc {
+            tree.reveal(&doc.path);
+        }
+        self.tree_open = true;
+        self.tree_focus = true;
+    }
+
+    fn tree_key(&mut self, key: KeyEvent) {
+        let Some(tree) = &mut self.tree else {
+            self.tree_focus = false;
+            return;
+        };
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => tree.move_by(-1),
+            KeyCode::Down | KeyCode::Char('j') => tree.move_by(1),
+            KeyCode::PageUp => tree.move_by(-10),
+            KeyCode::PageDown => tree.move_by(10),
+            KeyCode::Right | KeyCode::Char('l') => tree.expand(),
+            KeyCode::Left | KeyCode::Char('h') => tree.collapse(),
+            KeyCode::Enter => {
+                if let Some(path) = tree.activate() {
+                    self.open_from_tree(&path);
+                }
+            }
+            KeyCode::Esc | KeyCode::Tab => self.tree_focus = false,
+            KeyCode::Char('b') => self.toggle_tree(),
+            KeyCode::Char('q') => self.quit = true,
+            KeyCode::Char('?') => self.mode = Mode::Help,
+            _ => {}
+        }
+    }
+
+    fn open_from_tree(&mut self, path: &Path) {
+        let previous = self.doc.as_ref().map(|d| (d.path.clone(), d.scroll));
+        match self.open(path, None) {
+            Ok(()) => {
+                self.history.extend(previous);
+                self.tree_focus = false;
+            }
+            Err(error) => self.message = Some(format!("{error:#}")),
+        }
     }
 
     fn watch(&mut self, path: &Path) {
@@ -439,6 +627,7 @@ impl App {
             graphics: self.graphics,
             cell: self.cell,
             base_dir: &base_dir,
+            line_numbers: doc.listing,
         };
         doc.rendered = layout(&doc.doc, &options, &mut self.assets);
         doc.width = width;
@@ -619,19 +808,29 @@ impl App {
         };
         if !path.exists() {
             self.message = Some(format!("not found: {}", path.display()));
-        } else if is_markdown_path(&path) {
+            return;
+        }
+        // Text files open here; anything the viewer cannot show (folders,
+        // pictures, binaries) goes to the system's own program for it.
+        if !path.is_dir() {
             let anchor = url.split_once('#').map(|(_, a)| a.to_string());
             let previous = (doc.path.clone(), doc.scroll);
             match self.open(&path, anchor) {
-                Ok(()) => self.history.push(previous),
-                Err(error) => self.message = Some(format!("{error:#}")),
+                Ok(()) => {
+                    self.history.push(previous);
+                    return;
+                }
+                Err(error) if is_markdown_path(&path) => {
+                    self.message = Some(format!("{error:#}"));
+                    return;
+                }
+                Err(_) => {}
             }
-        } else {
-            self.message = Some(match open_external(&path.to_string_lossy()) {
-                Ok(()) => format!("opened {}", path.display()),
-                Err(error) => format!("cannot open {}: {error}", path.display()),
-            });
         }
+        self.message = Some(match open_external(&path.to_string_lossy()) {
+            Ok(()) => format!("opened {}", path.display()),
+            Err(error) => format!("cannot open {}: {error}", path.display()),
+        });
     }
 
     fn copy_code(&mut self, index: usize) {
@@ -794,14 +993,30 @@ impl App {
 
     fn key(&mut self, key: KeyEvent) {
         self.message = None;
+        if self.mode == Mode::Edit {
+            if key.code == KeyCode::F(1) {
+                self.mode = Mode::Help;
+                return;
+            }
+            // Every other key belongs to the editor, Ctrl-C included (it
+            // copies).
+            if let Some(editor) = &mut self.editor {
+                let outcome = editor.key(key);
+                self.apply(outcome);
+            }
+            return;
+        }
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             self.quit = true;
             return;
         }
         match self.mode {
+            Mode::Edit => {}
+            Mode::View if self.tree_open && self.tree_focus => self.tree_key(key),
             Mode::View => self.view_key(key),
             Mode::Picker => self.picker_key(key),
             Mode::Toc => self.toc_key(key),
+            Mode::Help if self.editor.is_some() => self.mode = Mode::Edit,
             Mode::Help => self.mode = Mode::View,
             Mode::Search => match key.code {
                 KeyCode::Esc => self.mode = Mode::View,
@@ -883,6 +1098,8 @@ impl App {
                 self.mode = Mode::Toc;
             }
             KeyCode::Char('f') => self.enter_picker(),
+            KeyCode::Char('b') => self.toggle_tree(),
+            KeyCode::Char('e') => self.start_edit(),
             KeyCode::Char('o') => self.open_browser(),
             KeyCode::Char('i') => self.switch_graphics(),
             KeyCode::Char('c') => {
@@ -971,6 +1188,34 @@ impl App {
             MouseEventKind::ScrollUp => -3,
             _ => 0,
         };
+        if self.mode == Mode::Edit {
+            if let Some(editor) = &mut self.editor {
+                let outcome = editor.mouse(mouse);
+                self.apply(outcome);
+            }
+            return;
+        }
+        let over_tree = self.tree_open
+            && self.mode == Mode::View
+            && mouse.column >= self.tree_area.x
+            && mouse.column < self.tree_area.x + self.tree_area.width;
+        if over_tree {
+            let Some(tree) = &mut self.tree else {
+                return;
+            };
+            if step != 0 {
+                tree.move_by(step.signum());
+            } else if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+                self.tree_focus = true;
+                if let Some(index) = tree.index_at(mouse.row) {
+                    tree.select_index(index);
+                    if let Some(path) = tree.activate() {
+                        self.open_from_tree(&path);
+                    }
+                }
+            }
+            return;
+        }
         if self.mode != Mode::View {
             if step != 0 && matches!(self.mode, Mode::Picker | Mode::Toc) {
                 let count = match self.mode {
@@ -987,6 +1232,7 @@ impl App {
         match mouse.kind {
             _ if step != 0 => self.scroll_by(step),
             MouseEventKind::Down(MouseButton::Left) => {
+                self.tree_focus = false;
                 self.selection = None;
                 self.press = self.point_at(mouse.column, mouse.row);
             }
@@ -1057,7 +1303,12 @@ impl App {
         if self.mode == Mode::Picker {
             self.draw_picker(frame, content);
         } else {
-            self.draw_document(frame, content);
+            let content = self.draw_tree(frame, content);
+            if self.editor.is_some() {
+                self.draw_editor(frame, content);
+            } else {
+                self.draw_document(frame, content);
+            }
         }
         match self.mode {
             Mode::Toc => self.draw_toc(frame, content),
@@ -1071,16 +1322,86 @@ impl App {
         self.draw_status(frame.buffer_mut(), status);
     }
 
+    /// Draws the file tree on the left when it is open and there is room,
+    /// and returns what is left for the document.
+    fn draw_tree(&mut self, frame: &mut Frame, area: Rect) -> Rect {
+        self.tree_area = Rect::default();
+        let Some(tree) = self.tree.as_mut().filter(|_| self.tree_open) else {
+            return area;
+        };
+        if area.width < 60 {
+            return area;
+        }
+        let width = (area.width / 4).clamp(24, 40);
+        let side = Rect::new(area.x, area.y, width, area.height);
+        let color = if self.tree_focus {
+            self.theme.accent
+        } else {
+            self.theme.border
+        };
+        let block = Block::new()
+            .borders(Borders::RIGHT)
+            .border_style(Style::new().fg(color));
+        let inner = block.inner(side);
+        frame.render_widget(block, side);
+        let current = self.doc.as_ref().map(|d| d.path.as_path());
+        tree.render(
+            inner,
+            frame.buffer_mut(),
+            &self.theme,
+            self.tree_focus,
+            current,
+        );
+        self.tree_area = inner;
+        Rect::new(area.x + width, area.y, area.width - width, area.height)
+    }
+
+    /// The editor, with the live preview beside it when the pane is wide
+    /// enough for both.
+    fn draw_editor(&mut self, frame: &mut Frame, area: Rect) {
+        let split = area.width >= 100;
+        let editor_area = if split {
+            Rect::new(area.x, area.y, area.width / 2, area.height)
+        } else {
+            area
+        };
+        if let Some(editor) = &mut self.editor {
+            let block = Block::new()
+                .borders(if split { Borders::RIGHT } else { Borders::NONE })
+                .border_style(Style::new().fg(self.theme.border));
+            let inner = block.inner(editor_area);
+            frame.render_widget(block, editor_area);
+            editor.render(inner, frame.buffer_mut());
+            self.editor_area = inner;
+        }
+        if split {
+            let preview = Rect::new(
+                area.x + editor_area.width,
+                area.y,
+                area.width - editor_area.width,
+                area.height,
+            );
+            self.draw_document(frame, preview);
+        }
+    }
+
     /// The help window: every key, grouped, in one or two columns.
     fn draw_help(&mut self, frame: &mut Frame, area: Rect) {
         let theme = &self.theme;
-        let key_width = HELP
+        // From the editor, the window lists the editor's own keys.
+        let editing = [("Editor", Editor::keys())];
+        let shown: &[(&str, &[(&str, &str)])] = if self.editor.is_some() {
+            &editing
+        } else {
+            HELP
+        };
+        let key_width = shown
             .iter()
             .flat_map(|(_, keys)| keys.iter())
             .map(|(key, _)| key.width())
             .max()
             .unwrap_or(0);
-        let text_width = HELP
+        let text_width = shown
             .iter()
             .flat_map(|(_, keys)| keys.iter())
             .map(|(_, what)| what.width())
@@ -1104,7 +1425,7 @@ impl App {
             lines.push(Line::default());
             lines
         };
-        let groups: Vec<Vec<Line>> = HELP.iter().map(group).collect();
+        let groups: Vec<Vec<Line>> = shown.iter().map(group).collect();
         let two_columns = area.width as usize >= column_width * 2 + 12;
         let mut lines: Vec<Line> = Vec::new();
         if two_columns {
@@ -1158,6 +1479,13 @@ impl App {
         let Some(doc) = &mut self.doc else {
             return;
         };
+        // While editing, the preview stays near the line being written.
+        if let Some(editor) = &self.editor {
+            let (line, _) = editor.cursor();
+            let source_lines = doc.source.lines().count().max(1);
+            let target = (line - 1) * doc.rendered.lines.len() / source_lines;
+            doc.scroll = target.saturating_sub(view.height as usize / 3);
+        }
         doc.scroll = doc.scroll.min(
             doc.rendered
                 .lines
@@ -1334,15 +1662,29 @@ impl App {
         }
         let name = match (&self.doc, self.mode) {
             (_, Mode::Picker) => "files".to_string(),
+            // Relative to the root; a file outside it shows just its name.
             (Some(doc), _) => doc
                 .path
                 .strip_prefix(self.root.canonicalize().unwrap_or_default())
+                .ok()
+                .or_else(|| doc.path.file_name().map(Path::new))
                 .unwrap_or(&doc.path)
                 .display()
                 .to_string(),
             (None, _) => String::new(),
         };
         let right = match (&self.doc, self.mode) {
+            (_, Mode::Edit) => {
+                let (line, column) = self.editor.as_ref().map_or((1, 1), Editor::cursor);
+                let modified = match &self.editor {
+                    Some(editor) if editor.is_dirty() => "modified · ",
+                    _ => "",
+                };
+                format!(" {modified}Ln {line}, Col {column} · F1 keys ")
+            }
+            (_, Mode::View) if self.tree_open && self.tree_focus => {
+                " ↑↓ move · ←→ fold · Enter open · b hide ".to_string()
+            }
             (_, Mode::Picker) => " ↑↓ move · Enter open · Esc back ".to_string(),
             (_, Mode::Toc) => " ↑↓ move · Enter go · Esc close ".to_string(),
             (Some(doc), _) => {
@@ -1386,6 +1728,15 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn headings_are_located_in_the_source_outside_code_fences() {
+        let source = "# One\n\n```sh\n# not a heading\n```\n\n## Two\ntext\n### Three\n";
+        assert_eq!(heading_source_line(source, 0), Some(1));
+        assert_eq!(heading_source_line(source, 1), Some(7));
+        assert_eq!(heading_source_line(source, 2), Some(9));
+        assert_eq!(heading_source_line(source, 3), None);
+    }
 
     #[test]
     fn columns_slice_by_display_width() {

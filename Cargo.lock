@@ -1278,7 +1278,7 @@ dependencies = [
 
 [[package]]
 name = "mdview"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1291,14 +1291,14 @@ dependencies = [
 
 [[package]]
 name = "mdview-core"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "pulldown-cmark",
 ]
 
 [[package]]
 name = "mdview-render"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "image",
@@ -1314,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "mdview-tui"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1325,13 +1325,14 @@ dependencies = [
  "mdview-web",
  "notify",
  "ratatui",
+ "ratatui-textarea",
  "syntect",
  "unicode-width",
 ]
 
 [[package]]
 name = "mdview-web"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "mdview-core",
@@ -1984,6 +1985,19 @@ checksum = "faf03e0380b7744054d6cb74224fe3adf062a029754933f575ca1e3b4c2ce977"
 dependencies = [
  "ratatui-core",
  "termwiz",
+]
+
+[[package]]
+name = "ratatui-textarea"
+version = "0.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78cdce79220909bec1bb8307c29fad7d0df7434280da6ecaf44cb208393bed00"
+dependencies = [
+ "ratatui-core",
+ "ratatui-crossterm",
+ "ratatui-widgets",
+ "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]

@@ -18,7 +18,10 @@ gets.
   show them, box-drawing text where it cannot.
 - **Live reload**: the preview follows the file as you save it.
 - **Made for reading docs**: table of contents, search, links between
-  documents, a file picker, click to copy a code block.
+  documents, a file tree, click to copy a code block.
+- **Read-only by default, with an editor built in**: press `e` to edit the
+  file with a live preview beside it. Nothing else to install.
+- **Source files too**: links to code open as a highlighted, numbered listing.
 
 ## Install as a herdr plugin
 
@@ -70,7 +73,9 @@ Press `?` in the viewer for this list.
 | `Tab`, `Shift-Tab`, `Enter`, click | Select and follow links, across documents and to headings |
 | `Backspace` | Previous document |
 | `t` | Table of contents |
+| `b` | File tree sidebar |
 | `f` | File picker |
+| `e` | Edit the file (see [Editing](#editing)) |
 | Drag | Select text; it is copied when you release |
 | `y`, click on a code block | Copy the code block |
 | `Y`, `Ctrl-A` | Copy the whole document as Markdown |
@@ -78,6 +83,24 @@ Press `?` in the viewer for this list.
 | `i` | Switch image mode (`kitty` / `text`) |
 | `c` | Light or dark colours |
 | `r`, `q` | Reload, quit |
+
+## Editing
+
+The viewer never changes a file until you ask. `e` opens the built-in editor
+on the section you are reading; on a wide pane the preview stays beside it and
+follows what you type. It works like a plain text box: no modes, no setup, no
+external editor.
+
+| Key | Action |
+|---|---|
+| `Ctrl-S` | Save |
+| `Esc`, `Ctrl-Q` | Back to reading; asks again if there are unsaved changes |
+| `Ctrl-Z`, `Ctrl-Y` | Undo, redo |
+| `Shift`+arrows, `Ctrl-A` | Select, select all |
+| `Ctrl-C`, `Ctrl-X`, `Ctrl-V` | Copy, cut, paste |
+| `Ctrl-K` | Delete the line |
+| Click, wheel | Place the cursor, scroll |
+| `F1` | All editor keys |
 
 ## How diagrams are drawn
 

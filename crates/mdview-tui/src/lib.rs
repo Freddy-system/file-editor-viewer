@@ -1,9 +1,12 @@
 //! Terminal frontend: the viewer that runs in a herdr pane or any terminal.
 
 mod app;
+mod editor;
 mod graphics;
 mod layout;
+mod source;
 mod theme;
+mod tree;
 
 use std::path::PathBuf;
 
