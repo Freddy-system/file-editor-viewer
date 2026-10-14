@@ -1,12 +1,14 @@
-# mdview
+# File Editor & Viewer for herdr
 
 English · [Español](README.es.md)
 
-A Markdown previewer for the terminal that draws **Mermaid diagrams, Graphviz
-graphs and LaTeX math**. It runs as a [herdr](https://herdr.dev) plugin, as a
-standalone terminal viewer, and as a live browser preview. Written in Rust.
+View and edit files without leaving your terminal. Markdown is rendered with
+**Mermaid diagrams, Graphviz graphs and LaTeX math**; source code and config
+are highlighted; and a built-in editor is one key away. It runs as a
+[herdr](https://herdr.dev) plugin and as a standalone command, `fev`. Written
+in Rust.
 
-![mdview previewing a document with diagrams in a terminal](docs/demo.gif)
+![File Editor & Viewer showing a document with diagrams in a terminal](docs/demo.gif)
 
 The recording is a plain terminal with no image support: what every terminal
 gets.
@@ -29,11 +31,11 @@ gets.
 Needs herdr 0.9 or newer.
 
 ```bash
-herdr plugin install Freddy-system/herdr-mdview
+herdr plugin install Freddy-system/file-editor-viewer
 ```
 
 The install downloads a prebuilt binary for Linux and macOS (x86_64 and
-arm64). On other platforms, or with `MDVIEW_BUILD_FROM_SOURCE=1`, it builds
+arm64). On other platforms, or with `FEV_BUILD_FROM_SOURCE=1`, it builds
 with `cargo`.
 
 Bind it to a key in `~/.config/herdr/config.toml`, then run
@@ -43,8 +45,8 @@ Bind it to a key in `~/.config/herdr/config.toml`, then run
 [[keys.command]]
 key = "prefix+m"
 type = "plugin_action"
-command = "mdview.open"
-description = "preview Markdown"
+command = "file-editor-viewer.open"
+description = "view or edit files"
 ```
 
 ### Using it in herdr
@@ -54,11 +56,11 @@ description = "preview Markdown"
 | Press the key | A pane opens on the right with the `README.md` of the focused pane's directory, or a file picker if there is none |
 | Select a `.md` path, then press the key | That file opens |
 | Ctrl-click a link to a local `.md` file | That file opens |
-| Run `mdview open notes.md` in a pane | That file opens in a pane beside it |
-| `herdr plugin action invoke mdview.open-tab` | Same, in a new tab |
-| `herdr plugin action invoke mdview.open-overlay` | Same, in an overlay |
+| Run `fev open notes.md` in a pane | That file opens in a pane beside it |
+| `herdr plugin action invoke file-editor-viewer.open-tab` | Same, in a new tab |
+| `herdr plugin action invoke file-editor-viewer.open-overlay` | Same, in an overlay |
 
-`mdview open` needs the `mdview` command on your `PATH`; see
+`fev open` needs the `fev` command on your `PATH`; see
 [Standalone](#standalone).
 
 ## Keys
@@ -106,7 +108,7 @@ external editor.
 ## How diagrams are drawn
 
 herdr gives plugins terminal panes, so what graphics can look like depends on
-the terminal herdr runs in. mdview has three levels:
+the terminal herdr runs in. fev has three levels:
 
 | Level | Where | Result |
 |---|---|---|
@@ -114,7 +116,7 @@ the terminal herdr runs in. mdview has three levels:
 | `text` | Any terminal, e.g. Alacritty | Mermaid and Graphviz as box-drawing characters, math as Unicode, images as coloured half blocks |
 | Browser (`o`) | Anywhere | The original Mermaid, KaTeX and Graphviz renderers, with live reload |
 
-mdview picks `kitty` or `text` from the terminal it detects. `i` switches and
+fev picks `kitty` or `text` from the terminal it detects. `i` switches and
 remembers your choice.
 
 Known limits:
@@ -133,27 +135,27 @@ If `plantuml` or `d2` are installed, their code blocks are drawn too.
 
 | Variable | Effect |
 |---|---|
-| `MDVIEW_GRAPHICS=kitty\|text` | Force the image mode |
-| `MDVIEW_THEME=light\|dark` | Starting colours |
-| `MDVIEW_CELL=10x20` | Cell size in pixels assumed when sizing images |
-| `MDVIEW_MOUSE=0` | Leave the mouse to the terminal |
+| `FEV_GRAPHICS=kitty\|text` | Force the image mode |
+| `FEV_THEME=light\|dark` | Starting colours |
+| `FEV_CELL=10x20` | Cell size in pixels assumed when sizing images |
+| `FEV_MOUSE=0` | Leave the mouse to the terminal |
 
 ## Standalone
 
-mdview does not need herdr.
+fev does not need herdr.
 
 ```bash
-cargo install --git https://github.com/Freddy-system/herdr-mdview mdview
+cargo install --git https://github.com/Freddy-system/file-editor-viewer fev
 ```
 
 Prebuilt binaries are attached to each
-[release](https://github.com/Freddy-system/herdr-mdview/releases).
+[release](https://github.com/Freddy-system/file-editor-viewer/releases).
 
 ```bash
-mdview README.md            # terminal viewer
-mdview docs/                # file picker for a directory
-mdview serve docs/          # browser preview with live reload
-mdview export README.md     # writes README.html
+fev README.md            # terminal viewer
+fev docs/                # file picker for a directory
+fev serve docs/          # browser preview with live reload
+fev export README.md     # writes README.html
 ```
 
 The preview server listens on `127.0.0.1` only and serves nothing outside the
@@ -166,15 +168,15 @@ all start from the same document model.
 
 | Crate | Role |
 |---|---|
-| `mdview-core` | Parses Markdown into a tree of blocks. New syntax is added here once, for every frontend |
-| `mdview-render` | Diagram engines behind the `DiagramEngine` trait. A new language is a new engine in the `Registry` |
-| `mdview-tui` | Layout to terminal lines, Kitty or text graphics, and the interactive viewer |
-| `mdview-web` | Self-contained HTML page and the local live-reload server |
-| `mdview` | Command line and the herdr glue (`herdr-plugin.toml`) |
+| `fev-core` | Parses Markdown into a tree of blocks. New syntax is added here once, for every frontend |
+| `fev-render` | Diagram engines behind the `DiagramEngine` trait. A new language is a new engine in the `Registry` |
+| `fev-tui` | Layout to terminal lines, Kitty or text graphics, and the interactive viewer |
+| `fev-web` | Self-contained HTML page and the local live-reload server |
+| `fev` | Command line and the herdr glue (`herdr-plugin.toml`) |
 
 ## Roadmap
 
-- **VS Code extension**: a webview showing the `mdview-web` page, with scroll
+- **VS Code extension**: a webview showing the `fev-web` page, with scroll
   sync through the heading ids the core already produces.
 - **Desktop app** for Linux, Windows and macOS: a Tauri shell around the same
   page.

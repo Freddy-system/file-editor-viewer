@@ -1,11 +1,11 @@
 #!/bin/sh
-# Build step of the herdr plugin: puts the mdview binary at
-# target/release/mdview. Downloads the prebuilt binary for this release when
+# Build step of the herdr plugin: puts the fev binary at
+# target/release/fev. Downloads the prebuilt binary for this release when
 # there is one for the platform, and compiles from source otherwise.
-# MDVIEW_BUILD_FROM_SOURCE=1 skips the download.
+# FEV_BUILD_FROM_SOURCE=1 skips the download.
 set -eu
 
-repo="Freddy-system/herdr-mdview"
+repo="Freddy-system/file-editor-viewer"
 version=$(sed -n 's/^version = "\(.*\)"$/\1/p' herdr-plugin.toml | head -n 1)
 dest="target/release"
 
@@ -26,28 +26,28 @@ checksum() {
 }
 
 download() {
-    archive="mdview-$target.tar.gz"
+    archive="fev-$target.tar.gz"
     url="https://github.com/$repo/releases/download/v$version/$archive"
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT
     curl -fsSL "$url" -o "$tmp/$archive" 2>/dev/null || return 1
     curl -fsSL "$url.sha256" -o "$tmp/$archive.sha256" 2>/dev/null || return 1
     [ "$(checksum "$tmp/$archive")" = "$(cut -d ' ' -f 1 "$tmp/$archive.sha256")" ] || {
-        echo "mdview: checksum mismatch for $archive" >&2
+        echo "fev: checksum mismatch for $archive" >&2
         return 1
     }
     tar -xzf "$tmp/$archive" -C "$tmp" || return 1
-    "$tmp/mdview" --version >/dev/null 2>&1 || return 1
+    "$tmp/fev" --version >/dev/null 2>&1 || return 1
     mkdir -p "$dest"
-    mv "$tmp/mdview" "$dest/mdview"
+    mv "$tmp/fev" "$dest/fev"
 }
 
-if [ -n "$target" ] && [ "${MDVIEW_BUILD_FROM_SOURCE:-0}" != "1" ] && command -v curl >/dev/null 2>&1; then
+if [ -n "$target" ] && [ "${FEV_BUILD_FROM_SOURCE:-0}" != "1" ] && command -v curl >/dev/null 2>&1; then
     if download; then
-        echo "mdview: installed prebuilt $version for $target"
+        echo "fev: installed prebuilt $version for $target"
         exit 0
     fi
-    echo "mdview: no prebuilt binary for $version on $target, building from source"
+    echo "fev: no prebuilt binary for $version on $target, building from source"
 fi
 
-exec cargo build --release --bin mdview
+exec cargo build --release --bin fev

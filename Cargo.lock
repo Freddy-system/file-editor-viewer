@@ -716,6 +716,71 @@ dependencies = [
 ]
 
 [[package]]
+name = "fev"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "fev-core",
+ "fev-render",
+ "fev-tui",
+ "fev-web",
+ "serde_json",
+]
+
+[[package]]
+name = "fev-core"
+version = "0.3.0"
+dependencies = [
+ "pulldown-cmark",
+]
+
+[[package]]
+name = "fev-render"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "image",
+ "layout-rs",
+ "mermaid-rs-renderer",
+ "mermaid-text",
+ "ratex-layout",
+ "ratex-parser",
+ "ratex-render",
+ "ratex-types",
+ "resvg",
+]
+
+[[package]]
+name = "fev-tui"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "fev-core",
+ "fev-render",
+ "fev-web",
+ "ignore",
+ "image",
+ "notify",
+ "ratatui",
+ "ratatui-textarea",
+ "syntect",
+ "two-face",
+ "unicode-width",
+]
+
+[[package]]
+name = "fev-web"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "fev-core",
+ "pulldown-cmark",
+ "tiny_http",
+]
+
+[[package]]
 name = "filedescriptor"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1274,71 +1339,6 @@ checksum = "f3d0581a75c45969c63afd2bb87b1d8b25cfcc556c7a918cf9bb13b0fe8d2381"
 dependencies = [
  "nix 0.31.3",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "mdview"
-version = "0.2.3"
-dependencies = [
- "anyhow",
- "clap",
- "mdview-core",
- "mdview-render",
- "mdview-tui",
- "mdview-web",
- "serde_json",
-]
-
-[[package]]
-name = "mdview-core"
-version = "0.2.3"
-dependencies = [
- "pulldown-cmark",
-]
-
-[[package]]
-name = "mdview-render"
-version = "0.2.3"
-dependencies = [
- "anyhow",
- "image",
- "layout-rs",
- "mermaid-rs-renderer",
- "mermaid-text",
- "ratex-layout",
- "ratex-parser",
- "ratex-render",
- "ratex-types",
- "resvg",
-]
-
-[[package]]
-name = "mdview-tui"
-version = "0.2.3"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "ignore",
- "image",
- "mdview-core",
- "mdview-render",
- "mdview-web",
- "notify",
- "ratatui",
- "ratatui-textarea",
- "syntect",
- "two-face",
- "unicode-width",
-]
-
-[[package]]
-name = "mdview-web"
-version = "0.2.3"
-dependencies = [
- "anyhow",
- "mdview-core",
- "pulldown-cmark",
- "tiny_http",
 ]
 
 [[package]]

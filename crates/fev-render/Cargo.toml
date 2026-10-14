@@ -1,0 +1,19 @@
+[package]
+name = "fev-render"
+description = "Diagram, math and image engines for fev (Mermaid, Graphviz, LaTeX, SVG)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+image.workspace = true
+mermaid-rs-renderer = { version = "0.3", default-features = false }
+mermaid-text = "0.57"
+layout-rs = "0.1"
+ratex-parser = "0.1"
+ratex-layout = "0.1"
+ratex-render = { version = "0.1", features = ["embed-fonts"] }
+ratex-types = "0.1"
+resvg = "0.48"

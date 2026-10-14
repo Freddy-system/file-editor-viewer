@@ -1,5 +1,5 @@
 # Records docs/demo.gif with VHS (https://github.com/charmbracelet/vhs).
-# Run from the repository root with mdview on PATH:  vhs docs/demo.tape
+# Run from the repository root with fev on PATH:  vhs docs/demo.tape
 # VHS draws in a plain terminal without image support, so this shows the
 # text mode every terminal gets.
 # VHS does not keep a steady pace between runs; the published GIF was retimed
@@ -15,9 +15,9 @@ Set Padding 14
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 60ms
 
-Env MDVIEW_GRAPHICS "text"
+Env FEV_GRAPHICS "text"
 
-Type "mdview examples/demo.md"
+Type "fev examples/demo.md"
 Sleep 600ms
 Enter
 Sleep 2.5s

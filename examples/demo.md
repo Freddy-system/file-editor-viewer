@@ -1,9 +1,9 @@
 ---
-title: mdview demo
+title: File Editor & Viewer demo
 tags: [markdown, diagrams]
 ---
 
-# mdview demo
+# File Editor & Viewer demo
 
 A tour of what the previewer draws. Press `?` for keys, `t` for the contents,
 `o` to open this page in the browser.
@@ -70,7 +70,7 @@ flowchart LR
 sequenceDiagram
     participant U as User
     participant H as herdr
-    participant M as mdview
+    participant M as fev
     U->>H: Ctrl-click README.md
     H->>M: open pane
     M-->>U: rendered document

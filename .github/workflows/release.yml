@@ -35,11 +35,11 @@ jobs:
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: cargo test --workspace --locked
       - name: Build
-        run: cargo build --release --locked --bin mdview --target ${{ matrix.target }}
+        run: cargo build --release --locked --bin fev --target ${{ matrix.target }}
       - name: Package
         run: |
-          archive="mdview-${{ matrix.target }}.tar.gz"
-          tar -czf "$archive" -C "target/${{ matrix.target }}/release" mdview
+          archive="fev-${{ matrix.target }}.tar.gz"
+          tar -czf "$archive" -C "target/${{ matrix.target }}/release" fev
           if command -v sha256sum >/dev/null 2>&1; then
             sha256sum "$archive" > "$archive.sha256"
           else
@@ -48,6 +48,6 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            mdview-${{ matrix.target }}.tar.gz
-            mdview-${{ matrix.target }}.tar.gz.sha256
+            fev-${{ matrix.target }}.tar.gz
+            fev-${{ matrix.target }}.tar.gz.sha256
           generate_release_notes: true

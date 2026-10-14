@@ -1,0 +1,20 @@
+[package]
+name = "fev"
+description = "View and edit files in the terminal: herdr plugin, standalone viewer and browser preview"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "fev"
+path = "src/main.rs"
+
+[dependencies]
+fev-core.workspace = true
+fev-render.workspace = true
+fev-tui.workspace = true
+fev-web.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+clap = { version = "4", features = ["derive"] }
