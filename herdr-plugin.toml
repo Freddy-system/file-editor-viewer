@@ -1,6 +1,6 @@
 id = "file-editor-viewer"
 name = "File Editor & Viewer"
-version = "0.3.2"
+version = "0.3.3"
 min_herdr_version = "0.9.0"
 description = "View and edit files in a pane: Markdown with Mermaid, Graphviz and LaTeX, source code, images. Built-in editor"
 platforms = ["linux", "macos"]

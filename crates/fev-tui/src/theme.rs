@@ -1,5 +1,6 @@
 use fev_core::Alert;
 use ratatui::style::Color;
+use two_face::theme::EmbeddedThemeName;
 
 #[derive(Debug, Clone)]
 pub struct Theme {
@@ -23,7 +24,8 @@ pub struct Theme {
     pub bar_fg: Color,
     pub bar_bg: Color,
     pub accent: Color,
-    pub syntax_theme: &'static str,
+    /// Colour scheme for highlighted code.
+    pub syntax_theme: EmbeddedThemeName,
     alerts: [Color; 5],
 }
 
@@ -37,7 +39,7 @@ impl Theme {
             dark: true,
             background: [0x1e, 0x1e, 0x2e],
             text: [0xcd, 0xd6, 0xf4],
-            dim: rgb(0x7f849c),
+            dim: rgb(0x9aa0bc),
             border: rgb(0x3b3d52),
             headings: [
                 rgb(0xf5c2e7),
@@ -50,7 +52,7 @@ impl Theme {
             link: rgb(0x89b4fa),
             code: rgb(0xfab387),
             code_bg: rgb(0x2a2b3c),
-            quote: rgb(0xa6adc8),
+            quote: rgb(0xbac2de),
             math: rgb(0xf9e2af),
             diagram: rgb(0x94e2d5),
             marker: rgb(0xf38ba8),
@@ -60,7 +62,7 @@ impl Theme {
             bar_fg: rgb(0xcdd6f4),
             bar_bg: rgb(0x313244),
             accent: rgb(0xcba6f7),
-            syntax_theme: "base16-ocean.dark",
+            syntax_theme: EmbeddedThemeName::Dracula,
             alerts: [
                 rgb(0x89b4fa),
                 rgb(0xa6e3a1),
@@ -99,7 +101,7 @@ impl Theme {
             bar_fg: rgb(0x4c4f69),
             bar_bg: rgb(0xccd0da),
             accent: rgb(0x8839ef),
-            syntax_theme: "InspiredGitHub",
+            syntax_theme: EmbeddedThemeName::Github,
             alerts: [
                 rgb(0x1e66f5),
                 rgb(0x40a02b),

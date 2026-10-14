@@ -9,7 +9,6 @@ use fev_render::{Palette, Registry};
 use image::RgbaImage;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Span;
-use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -113,7 +112,7 @@ pub struct Rendered {
 pub struct Assets {
     registry: Registry,
     syntaxes: SyntaxSet,
-    themes: ThemeSet,
+    themes: two_face::theme::EmbeddedLazyThemeSet,
     pictures: HashMap<u64, Result<Arc<RgbaImage>, String>>,
 }
 
@@ -124,7 +123,7 @@ impl Default for Assets {
             // The extended set: syntect's own leaves out TOML, TypeScript,
             // Dockerfile and many other everyday languages.
             syntaxes: two_face::syntax::extra_newlines(),
-            themes: ThemeSet::load_defaults(),
+            themes: two_face::theme::extra(),
             pictures: HashMap::new(),
         }
     }
@@ -622,10 +621,8 @@ impl Layouter<'_> {
             .syntaxes
             .find_syntax_by_token(lang)
             .unwrap_or_else(|| self.assets.syntaxes.find_syntax_plain_text());
-        let mut highlighter = syntect::easy::HighlightLines::new(
-            syntax,
-            &self.assets.themes.themes[theme.syntax_theme],
-        );
+        let mut highlighter =
+            syntect::easy::HighlightLines::new(syntax, self.assets.themes.get(theme.syntax_theme));
         for (number, source_line) in code.split('\n').enumerate() {
             let source_line = source_line.replace('\t', "    ");
             let with_newline = format!("{source_line}\n");
@@ -646,7 +643,10 @@ impl Layouter<'_> {
                 row.extend(blank_gutter.clone());
             };
             for (style, text) in ranges {
-                let color = Color::Rgb(style.foreground.r, style.foreground.g, style.foreground.b);
+                let color = readable(
+                    [style.foreground.r, style.foreground.g, style.foreground.b],
+                    theme.dark,
+                );
                 let mut chunk = String::new();
                 for c in text.chars().filter(|c| *c != '\n' && *c != '\r') {
                     let w = c.width().unwrap_or(0);
@@ -954,6 +954,29 @@ impl Layouter<'_> {
             }
         }
     }
+}
+
+/// Lifts colours that would read poorly on the background: dark ones on a
+/// dark theme are mixed toward white, pale ones on a light theme toward
+/// black. Code themes tend to paint comments in a faint grey.
+fn readable([r, g, b]: [u8; 3], dark: bool) -> Color {
+    const DARK_FLOOR: f32 = 150.0;
+    const LIGHT_CEILING: f32 = 110.0;
+    let luminance = 0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32;
+    let mix =
+        |c: u8, toward: f32, amount: f32| (c as f32 + (toward - c as f32) * amount).round() as u8;
+    let (toward, amount) = if dark && luminance < DARK_FLOOR {
+        (255.0, (DARK_FLOOR - luminance) / (255.0 - luminance))
+    } else if !dark && luminance > LIGHT_CEILING {
+        (0.0, (luminance - LIGHT_CEILING) / luminance)
+    } else {
+        return Color::Rgb(r, g, b);
+    };
+    Color::Rgb(
+        mix(r, toward, amount),
+        mix(g, toward, amount),
+        mix(b, toward, amount),
+    )
 }
 
 /// Resolves a relative link against the document directory. `None` for URLs
@@ -1435,6 +1458,23 @@ mod tests {
                 "no syntax for {token}"
             );
         }
+    }
+
+    #[test]
+    fn faint_code_colours_are_lifted_to_a_readable_brightness() {
+        let luminance = |c: Color| match c {
+            Color::Rgb(r, g, b) => 0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32,
+            _ => unreachable!(),
+        };
+        // A typical faint comment grey on a dark theme gets brighter...
+        assert!(luminance(readable([0x62, 0x72, 0xa4], true)) >= 149.0);
+        // ...while colours that already read well stay as they are.
+        assert_eq!(
+            readable([0xff, 0x79, 0xc6], true),
+            Color::Rgb(0xff, 0x79, 0xc6)
+        );
+        // On a light theme pale colours get darker.
+        assert!(luminance(readable([0xd0, 0xd0, 0xd0], false)) <= 111.0);
     }
 
     #[test]
