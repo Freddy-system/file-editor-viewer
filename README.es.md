@@ -69,8 +69,8 @@ description = "vista previa de Markdown"
 | `Tab`, `Mayús-Tab`, `Enter`, clic | Elegir y seguir enlaces (entre documentos y a títulos) |
 | `Retroceso` | Volver al documento anterior |
 | `t` | Índice del documento |
-| `b` | Árbol de archivos lateral |
-| `f` | Selector de archivos |
+| `b` | Árbol de archivos lateral, con todos los archivos |
+| `f` | Selector de archivos; `Tab` alterna entre Markdown y todos |
 | `e` | Editar el archivo con el editor integrado |
 | Arrastrar con el ratón | Seleccionar texto; al soltar queda copiado |
 | `y`, clic sobre un bloque de código | Copiar el bloque al portapapeles |
@@ -99,8 +99,8 @@ normal, sin modos y sin instalar ningún editor externo.
 | Clic, rueda | Mover el cursor, desplazar |
 | `F1` | Todas las teclas del editor |
 
-Los enlaces a archivos de código se abren en el propio visor, como listado
-resaltado y con números de línea.
+Cualquier archivo de texto (código, configuración) se abre en el propio visor
+como listado resaltado y con números de línea, y se edita igual con `e`.
 
 ## Diagramas e imágenes: tres niveles
 

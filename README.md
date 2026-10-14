@@ -21,7 +21,8 @@ gets.
   documents, a file tree, click to copy a code block.
 - **Read-only by default, with an editor built in**: press `e` to edit the
   file. Nothing else to install.
-- **Source files too**: links to code open as a highlighted, numbered listing.
+- **Any text file**: source code and config open as a highlighted, numbered
+  listing, and can be edited the same way.
 
 ## Install as a herdr plugin
 
@@ -73,8 +74,8 @@ Press `?` in the viewer for this list.
 | `Tab`, `Shift-Tab`, `Enter`, click | Select and follow links, across documents and to headings |
 | `Backspace` | Previous document |
 | `t` | Table of contents |
-| `b` | File tree sidebar |
-| `f` | File picker |
+| `b` | File tree sidebar, with every file |
+| `f` | File picker; `Tab` switches between Markdown and all files |
 | `e` | Edit the file (see [Editing](#editing)) |
 | Drag | Select text; it is copied when you release |
 | `y`, click on a code block | Copy the code block |

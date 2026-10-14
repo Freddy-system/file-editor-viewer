@@ -12,6 +12,7 @@ mdview-render.workspace = true
 anyhow.workspace = true
 image.workspace = true
 ratatui = "0.30"
+two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
 syntect = { version = "5", default-features = false, features = ["default-fancy"] }
 notify = "8"
 ignore = "0.4"

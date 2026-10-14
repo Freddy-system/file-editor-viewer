@@ -115,6 +115,8 @@ struct App {
     mode: Mode,
     files: Vec<PathBuf>,
     filter: String,
+    /// Whether the picker lists every file or only Markdown.
+    pick_all: bool,
     selected: usize,
     query: String,
     search: String,
@@ -163,6 +165,7 @@ pub fn run(options: Options) -> anyhow::Result<()> {
         mode: Mode::View,
         files: Vec::new(),
         filter: String::new(),
+        pick_all: false,
         selected: 0,
         query: String::new(),
         search: String::new(),
@@ -519,9 +522,9 @@ impl App {
         }
         let tree = self
             .tree
-            .get_or_insert_with(|| Tree::load(&self.root, false));
+            .get_or_insert_with(|| Tree::load(&self.root, true));
         if tree.is_empty() {
-            self.message = Some(format!("no Markdown files in {}", self.root.display()));
+            self.message = Some(format!("no files in {}", self.root.display()));
             return;
         }
         if let Some(doc) = &self.doc {
@@ -557,13 +560,32 @@ impl App {
     }
 
     fn open_from_tree(&mut self, path: &Path) {
+        if self.open_listed(path) {
+            self.tree_focus = false;
+        }
+    }
+
+    /// Opens a file chosen from the tree or the picker. What the viewer
+    /// cannot show as text goes to the system's program for it. Returns
+    /// whether the viewer is now showing the file.
+    fn open_listed(&mut self, path: &Path) -> bool {
         let previous = self.doc.as_ref().map(|d| (d.path.clone(), d.scroll));
         match self.open(path, None) {
             Ok(()) => {
                 self.history.extend(previous);
-                self.tree_focus = false;
+                true
             }
-            Err(error) => self.message = Some(format!("{error:#}")),
+            Err(error) if is_markdown_path(path) => {
+                self.message = Some(format!("{error:#}"));
+                false
+            }
+            Err(error) => {
+                self.message = Some(match open_external(&path.to_string_lossy()) {
+                    Ok(()) => format!("{error:#}; opened outside"),
+                    Err(_) => format!("{error:#}"),
+                });
+                false
+            }
         }
     }
 
@@ -909,7 +931,7 @@ impl App {
             .flatten()
             .filter(|entry| entry.file_type().is_some_and(|t| t.is_file()))
             .map(|entry| entry.into_path())
-            .filter(|path| is_markdown_path(path))
+            .filter(|path| self.pick_all || is_markdown_path(path))
             .take(MAX_LISTED_FILES)
             .map(|path| path.strip_prefix(&self.root).unwrap_or(&path).to_path_buf())
             .collect();
@@ -1115,6 +1137,12 @@ impl App {
             KeyCode::PageDown => self.selected = (self.selected + 10).min(count.saturating_sub(1)),
             KeyCode::PageUp => self.selected = self.selected.saturating_sub(10),
             KeyCode::Enter => self.open_selected_file(),
+            KeyCode::Tab => {
+                self.pick_all = !self.pick_all;
+                let filter = std::mem::take(&mut self.filter);
+                self.enter_picker();
+                self.filter = filter;
+            }
             KeyCode::Backspace => {
                 self.filter.pop();
                 self.selected = 0;
@@ -1135,11 +1163,7 @@ impl App {
         else {
             return;
         };
-        let previous = self.doc.as_ref().map(|d| (d.path.clone(), d.scroll));
-        match self.open(&path, None) {
-            Ok(()) => self.history.extend(previous),
-            Err(error) => self.message = Some(format!("{error:#}")),
-        }
+        self.open_listed(&path);
     }
 
     fn toc_key(&mut self, key: KeyEvent) {
@@ -1427,7 +1451,12 @@ impl App {
     }
 
     fn draw_document(&mut self, frame: &mut Frame, area: Rect) {
-        let width = area.width.saturating_sub(2).min(MAX_TEXT_WIDTH).max(8);
+        // Prose reads best in a bounded column; code wants every column.
+        let limit = match &self.doc {
+            Some(doc) if doc.listing => u16::MAX,
+            _ => MAX_TEXT_WIDTH,
+        };
+        let width = area.width.saturating_sub(2).min(limit).max(8);
         let view = Rect::new(
             area.x + (area.width - width) / 2,
             area.y,
@@ -1517,7 +1546,15 @@ impl App {
             .borders(Borders::ALL)
             .border_style(Style::new().fg(theme.border))
             .title(Span::styled(
-                format!(" Markdown in {} ", self.root.display()),
+                format!(
+                    " {} in {} ",
+                    if self.pick_all {
+                        "All files"
+                    } else {
+                        "Markdown"
+                    },
+                    self.root.display()
+                ),
                 Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
             ));
         let inner = block.inner(area);
@@ -1541,7 +1578,7 @@ impl App {
         let list_area = Rect::new(inner.x, inner.y + 2, inner.width, inner.height - 2);
         if files.is_empty() {
             let hint = if self.files.is_empty() {
-                "No Markdown files here."
+                "No Markdown files here. Tab lists every file."
             } else {
                 "Nothing matches the filter."
             };
@@ -1640,7 +1677,10 @@ impl App {
             (_, Mode::View) if self.tree_open && self.tree_focus => {
                 " ↑↓ move · ←→ fold · Enter open · b hide ".to_string()
             }
-            (_, Mode::Picker) => " ↑↓ move · Enter open · Esc back ".to_string(),
+            (_, Mode::Picker) if self.pick_all => {
+                " ↑↓ move · Enter open · Tab only Markdown · Esc back ".to_string()
+            }
+            (_, Mode::Picker) => " ↑↓ move · Enter open · Tab all files · Esc back ".to_string(),
             (_, Mode::Toc) => " ↑↓ move · Enter go · Esc close ".to_string(),
             (Some(doc), _) => {
                 let total = doc.rendered.lines.len().max(1);

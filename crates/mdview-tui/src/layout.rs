@@ -121,7 +121,9 @@ impl Default for Assets {
     fn default() -> Self {
         Assets {
             registry: Registry::default(),
-            syntaxes: SyntaxSet::load_defaults_newlines(),
+            // The extended set: syntect's own leaves out TOML, TypeScript,
+            // Dockerfile and many other everyday languages.
+            syntaxes: two_face::syntax::extra_newlines(),
             themes: ThemeSet::load_defaults(),
             pictures: HashMap::new(),
         }
@@ -1411,6 +1413,32 @@ mod tests {
         let lines = texts(&rendered);
         assert!(lines.iter().all(|l| !l.contains('│')), "{lines:#?}");
         assert!(lines[1].starts_with(" one"), "{lines:#?}");
+    }
+
+    #[test]
+    fn everyday_languages_have_syntax_definitions() {
+        let assets = Assets::default();
+        for token in [
+            "rs",
+            "py",
+            "js",
+            "ts",
+            "tsx",
+            "toml",
+            "yaml",
+            "json",
+            "go",
+            "sh",
+            "sql",
+            "dockerfile",
+            "kt",
+            "swift",
+        ] {
+            assert!(
+                assets.syntaxes.find_syntax_by_token(token).is_some(),
+                "no syntax for {token}"
+            );
+        }
     }
 
     #[test]
