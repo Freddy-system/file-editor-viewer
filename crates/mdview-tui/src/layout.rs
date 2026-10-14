@@ -332,8 +332,7 @@ impl Layouter<'_> {
 
     fn heading(&mut self, level: u8, content: &[Inline], width: u16) -> Vec<RLine> {
         let color = self.theme().headings[(level.clamp(1, 6) - 1) as usize];
-        // Levels 1 and 2 get a rule below; deeper ones are told apart by
-        // colour, and by italics from level 4 down.
+        // Levels are told apart by colour, and by italics from level 4 down.
         let mut style = Style::new().fg(color).add_modifier(Modifier::BOLD);
         if level >= 4 {
             style = style.add_modifier(Modifier::ITALIC);
@@ -341,15 +340,12 @@ impl Layouter<'_> {
         let mut items = Vec::new();
         self.inline_items(content, style, None, &mut items);
         let mut lines = wrap(items, width);
-        let underline = match level {
-            1 => Some("━"),
-            2 => Some("─"),
-            _ => None,
-        };
-        if let Some(glyph) = underline {
+        // Only the document title is ruled off, and faintly: colour and
+        // spacing separate the other sections.
+        if level == 1 {
             lines.push(RLine::from_spans(vec![Span::styled(
-                glyph.repeat(width as usize),
-                Style::new().fg(color).add_modifier(Modifier::DIM),
+                "─".repeat(width as usize),
+                Style::new().fg(self.theme().border),
             )]));
         }
         lines

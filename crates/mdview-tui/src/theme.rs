@@ -38,7 +38,7 @@ impl Theme {
             background: [0x1e, 0x1e, 0x2e],
             text: [0xcd, 0xd6, 0xf4],
             dim: rgb(0x7f849c),
-            border: rgb(0x585b70),
+            border: rgb(0x3b3d52),
             headings: [
                 rgb(0xf5c2e7),
                 rgb(0xcba6f7),
@@ -77,7 +77,7 @@ impl Theme {
             background: [0xef, 0xf1, 0xf5],
             text: [0x4c, 0x4f, 0x69],
             dim: rgb(0x8c8fa1),
-            border: rgb(0xacb0be),
+            border: rgb(0xd3d7e0),
             headings: [
                 rgb(0xea76cb),
                 rgb(0x8839ef),
