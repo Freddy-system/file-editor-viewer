@@ -1,6 +1,6 @@
 id = "file-editor-viewer"
 name = "File Editor & Viewer"
-version = "0.3.0"
+version = "0.3.1"
 min_herdr_version = "0.9.0"
 description = "View and edit files in a pane: Markdown with Mermaid, Graphviz and LaTeX, source code, images. Built-in editor"
 platforms = ["linux", "macos"]
@@ -11,7 +11,7 @@ platforms = ["linux", "macos"]
 command = ["sh", "scripts/install.sh"]
 
 # The viewer. Opened by the actions below, which tell it what to show;
-# opened directly it shows the focused pane's README or a file picker.
+# opened directly it shows the focused pane's README or the file tree.
 [[panes]]
 id = "preview"
 title = "Files"

@@ -44,14 +44,14 @@ const HELP: &[(&str, &[(&str, &str)])] = &[
             ("g  G", "Top, bottom"),
             ("t", "Table of contents"),
             ("b", "File tree"),
-            ("f", "Choose another file"),
             ("Backspace", "Previous document"),
         ],
     ),
     (
         "Find and follow",
         &[
-            ("/", "Search"),
+            ("/", "Search this page"),
+            ("/ @name", "Find a file and open it"),
             ("n  N", "Next, previous match"),
             ("Tab  Shift-Tab", "Select a link"),
             ("Enter  click", "Follow the link"),
@@ -63,6 +63,16 @@ const HELP: &[(&str, &[(&str, &str)])] = &[
             ("drag", "Select text, copied on release"),
             ("y  click on code", "Copy a code block"),
             ("Y  Ctrl-A", "Copy the whole document"),
+        ],
+    ),
+    (
+        "Anywhere",
+        &[
+            ("Alt-b", "File tree"),
+            ("Alt-f", "Find a file"),
+            ("Alt-t", "Table of contents"),
+            ("Alt-e", "Edit this file"),
+            ("Alt-o", "Open in the browser"),
         ],
     ),
     (
@@ -84,7 +94,6 @@ type Point = (usize, u16);
 #[derive(PartialEq, Eq, Clone, Copy)]
 enum Mode {
     View,
-    Picker,
     Toc,
     Search,
     Help,
@@ -114,9 +123,6 @@ struct App {
     history: Vec<(PathBuf, usize)>,
     mode: Mode,
     files: Vec<PathBuf>,
-    filter: String,
-    /// Whether the picker lists every file or only Markdown.
-    pick_all: bool,
     selected: usize,
     query: String,
     search: String,
@@ -164,8 +170,6 @@ pub fn run(options: Options) -> anyhow::Result<()> {
         history: Vec::new(),
         mode: Mode::View,
         files: Vec::new(),
-        filter: String::new(),
-        pick_all: false,
         selected: 0,
         query: String::new(),
         search: String::new(),
@@ -197,7 +201,7 @@ pub fn run(options: Options) -> anyhow::Result<()> {
     });
     match first {
         Some(path) => app.open(&path, options.anchor)?,
-        None => app.enter_picker(),
+        None => app.start_without_document(),
     }
 
     let mut terminal = ratatui::init();
@@ -338,6 +342,32 @@ fn heading_source_line(source: &str, index: usize) -> Option<usize> {
         }
     }
     None
+}
+
+/// How well `path` matches `query`, lower is better: the file name
+/// containing it, then the path containing it, then its letters in order.
+/// None when it does not match at all.
+fn file_rank(path: &Path, query: &str) -> Option<u8> {
+    let query = query.to_lowercase();
+    if query.is_empty() {
+        return Some(if is_markdown_path(path) { 0 } else { 1 });
+    }
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let full = path.to_string_lossy().to_lowercase();
+    if name.starts_with(&query) {
+        Some(0)
+    } else if name.contains(&query) {
+        Some(1)
+    } else if full.contains(&query) {
+        Some(2)
+    } else if fuzzy_match(&full, &query) {
+        Some(3)
+    } else {
+        None
+    }
 }
 
 fn fuzzy_match(candidate: &str, filter: &str) -> bool {
@@ -553,6 +583,7 @@ impl App {
             }
             KeyCode::Esc | KeyCode::Tab => self.tree_focus = false,
             KeyCode::Char('b') => self.toggle_tree(),
+            KeyCode::Char('/') => self.find_files(),
             KeyCode::Char('q') => self.quit = true,
             KeyCode::Char('?') => self.mode = Mode::Help,
             _ => {}
@@ -924,29 +955,57 @@ impl App {
         }
     }
 
-    fn enter_picker(&mut self) {
-        let mut files: Vec<PathBuf> = ignore::WalkBuilder::new(&self.root)
-            .max_depth(Some(12))
-            .build()
-            .flatten()
-            .filter(|entry| entry.file_type().is_some_and(|t| t.is_file()))
-            .map(|entry| entry.into_path())
-            .filter(|path| self.pick_all || is_markdown_path(path))
-            .take(MAX_LISTED_FILES)
-            .map(|path| path.strip_prefix(&self.root).unwrap_or(&path).to_path_buf())
-            .collect();
-        files.sort();
-        self.files = files;
-        self.filter.clear();
-        self.selected = 0;
-        self.mode = Mode::Picker;
+    /// With no document to show, starts on the file tree, or on the file
+    /// finder when the tree has nothing.
+    fn start_without_document(&mut self) {
+        self.toggle_tree();
+        if !self.tree_open {
+            self.find_files();
+        }
     }
 
-    fn filtered_files(&self) -> Vec<&PathBuf> {
-        self.files
+    /// Opens the search prompt as a file finder (`/@`).
+    fn find_files(&mut self) {
+        self.load_files();
+        self.query = "@".into();
+        self.selected = 0;
+        self.mode = Mode::Search;
+    }
+
+    /// Lists the files under the root once, for the finder.
+    fn load_files(&mut self) {
+        if self.files.is_empty() {
+            let mut files: Vec<PathBuf> = ignore::WalkBuilder::new(&self.root)
+                .max_depth(Some(12))
+                .build()
+                .flatten()
+                .filter(|entry| entry.file_type().is_some_and(|t| t.is_file()))
+                .map(|entry| entry.into_path())
+                .take(MAX_LISTED_FILES)
+                .map(|path| path.strip_prefix(&self.root).unwrap_or(&path).to_path_buf())
+                .collect();
+            files.sort();
+            self.files = files;
+        }
+    }
+
+    /// The text after `@` while the prompt is a file finder.
+    fn file_query(&self) -> Option<&str> {
+        (self.mode == Mode::Search)
+            .then(|| self.query.strip_prefix('@'))
+            .flatten()
+    }
+
+    /// Files matching the finder's text, best matches first.
+    fn found_files(&self) -> Vec<&PathBuf> {
+        let query = self.file_query().unwrap_or("");
+        let mut found: Vec<(u8, &PathBuf)> = self
+            .files
             .iter()
-            .filter(|path| fuzzy_match(&path.to_string_lossy(), &self.filter))
-            .collect()
+            .filter_map(|path| file_rank(path, query).map(|rank| (rank, path)))
+            .collect();
+        found.sort_by_key(|(rank, path)| (*rank, path.as_os_str().len()));
+        found.into_iter().map(|(_, path)| path).collect()
     }
 
     fn open_browser(&mut self) {
@@ -1015,11 +1074,47 @@ impl App {
             self.quit = true;
             return;
         }
+        // Alt shortcuts work wherever the viewer is: in the tree, in a
+        // prompt, in a popup.
+        if key.modifiers.contains(KeyModifiers::ALT) {
+            let handled = match key.code {
+                KeyCode::Char('b') => {
+                    self.mode = Mode::View;
+                    self.toggle_tree();
+                    true
+                }
+                KeyCode::Char('f') => {
+                    self.find_files();
+                    true
+                }
+                KeyCode::Char('t') => {
+                    self.mode = Mode::View;
+                    self.open_toc();
+                    true
+                }
+                KeyCode::Char('e') => {
+                    self.mode = Mode::View;
+                    self.start_edit();
+                    true
+                }
+                KeyCode::Char('o') => {
+                    self.open_browser();
+                    true
+                }
+                _ => false,
+            };
+            if handled {
+                return;
+            }
+        }
+        if self.file_query().is_some() {
+            self.finder_key(key);
+            return;
+        }
         match self.mode {
             Mode::Edit => {}
             Mode::View if self.tree_open && self.tree_focus => self.tree_key(key),
             Mode::View => self.view_key(key),
-            Mode::Picker => self.picker_key(key),
             Mode::Toc => self.toc_key(key),
             Mode::Help if self.editor.is_some() => self.mode = Mode::Edit,
             Mode::Help => self.mode = Mode::View,
@@ -1041,7 +1136,13 @@ impl App {
                 KeyCode::Backspace => {
                     self.query.pop();
                 }
-                KeyCode::Char(c) => self.query.push(c),
+                KeyCode::Char(c) => {
+                    self.query.push(c);
+                    self.selected = 0;
+                    if self.query == "@" {
+                        self.load_files();
+                    }
+                }
                 _ => {}
             },
         }
@@ -1086,23 +1187,7 @@ impl App {
                 }
             }
             KeyCode::Backspace | KeyCode::Char('-') => self.back(),
-            KeyCode::Char('t') => {
-                let Some(doc) = &self.doc else {
-                    return;
-                };
-                if doc.rendered.toc.is_empty() {
-                    self.message = Some("this document has no headings".into());
-                    return;
-                }
-                self.selected = doc
-                    .rendered
-                    .toc
-                    .iter()
-                    .rposition(|entry| entry.2 <= doc.scroll)
-                    .unwrap_or(0);
-                self.mode = Mode::Toc;
-            }
-            KeyCode::Char('f') => self.enter_picker(),
+            KeyCode::Char('t') => self.open_toc(),
             KeyCode::Char('b') => self.toggle_tree(),
             KeyCode::Char('e') => self.start_edit(),
             KeyCode::Char('o') => self.open_browser(),
@@ -1127,43 +1212,52 @@ impl App {
         }
     }
 
-    fn picker_key(&mut self, key: KeyEvent) {
-        let count = self.filtered_files().len();
+    fn open_toc(&mut self) {
+        let Some(doc) = &self.doc else {
+            return;
+        };
+        if doc.rendered.toc.is_empty() {
+            self.message = Some("this document has no headings".into());
+            return;
+        }
+        self.selected = doc
+            .rendered
+            .toc
+            .iter()
+            .rposition(|entry| entry.2 <= doc.scroll)
+            .unwrap_or(0);
+        self.mode = Mode::Toc;
+    }
+
+    fn finder_key(&mut self, key: KeyEvent) {
+        let count = self.found_files().len();
         match key.code {
-            KeyCode::Esc if self.doc.is_some() => self.mode = Mode::View,
-            KeyCode::Esc => self.quit = true,
+            KeyCode::Esc => self.mode = Mode::View,
             KeyCode::Down => self.selected = (self.selected + 1).min(count.saturating_sub(1)),
             KeyCode::Up => self.selected = self.selected.saturating_sub(1),
             KeyCode::PageDown => self.selected = (self.selected + 10).min(count.saturating_sub(1)),
             KeyCode::PageUp => self.selected = self.selected.saturating_sub(10),
-            KeyCode::Enter => self.open_selected_file(),
-            KeyCode::Tab => {
-                self.pick_all = !self.pick_all;
-                let filter = std::mem::take(&mut self.filter);
-                self.enter_picker();
-                self.filter = filter;
+            KeyCode::Enter => {
+                let path = self
+                    .found_files()
+                    .get(self.selected)
+                    .map(|relative| self.root.join(relative));
+                self.mode = Mode::View;
+                self.query.clear();
+                if let Some(path) = path {
+                    self.open_listed(&path);
+                }
             }
             KeyCode::Backspace => {
-                self.filter.pop();
+                self.query.pop();
                 self.selected = 0;
             }
             KeyCode::Char(c) => {
-                self.filter.push(c);
+                self.query.push(c);
                 self.selected = 0;
             }
             _ => {}
         }
-    }
-
-    fn open_selected_file(&mut self) {
-        let Some(path) = self
-            .filtered_files()
-            .get(self.selected)
-            .map(|relative| self.root.join(relative))
-        else {
-            return;
-        };
-        self.open_listed(&path);
     }
 
     fn toc_key(&mut self, key: KeyEvent) {
@@ -1224,10 +1318,10 @@ impl App {
             return;
         }
         if self.mode != Mode::View {
-            if step != 0 && matches!(self.mode, Mode::Picker | Mode::Toc) {
+            if step != 0 && (self.mode == Mode::Toc || self.file_query().is_some()) {
                 let count = match self.mode {
-                    Mode::Picker => self.filtered_files().len(),
-                    _ => self.doc.as_ref().map_or(0, |d| d.rendered.toc.len()),
+                    Mode::Toc => self.doc.as_ref().map_or(0, |d| d.rendered.toc.len()),
+                    _ => self.found_files().len(),
                 };
                 self.selected = self
                     .selected
@@ -1307,23 +1401,21 @@ impl App {
         let content = Rect::new(area.x, area.y, area.width, area.height - 1);
         let status = Rect::new(area.x, content.y + content.height, area.width, 1);
         self.placements.clear();
-        if self.mode == Mode::Picker {
-            self.draw_picker(frame, content);
+        let document = self.draw_tree(frame, content);
+        if self.editor.is_some() {
+            self.draw_editor(frame, document);
         } else {
-            let content = self.draw_tree(frame, content);
-            if self.editor.is_some() {
-                self.draw_editor(frame, content);
-            } else {
-                self.draw_document(frame, content);
-            }
+            self.draw_document(frame, document);
         }
+        let finding = self.file_query().is_some();
         match self.mode {
             Mode::Toc => self.draw_toc(frame, content),
             Mode::Help => self.draw_help(frame, content),
+            Mode::Search if finding => self.draw_finder(frame, content),
             _ => {}
         }
         // Terminal-drawn images sit above text, so they would cover a popup.
-        if matches!(self.mode, Mode::Toc | Mode::Help | Mode::Picker) {
+        if matches!(self.mode, Mode::Toc | Mode::Help) || finding {
             self.placements.clear();
         }
         self.draw_status(frame.buffer_mut(), status);
@@ -1539,67 +1631,61 @@ impl App {
         }
     }
 
-    fn draw_picker(&mut self, frame: &mut Frame, area: Rect) {
+    /// The file finder: a window of matching files over the document.
+    fn draw_finder(&mut self, frame: &mut Frame, area: Rect) {
         let theme = &self.theme;
-        let files = self.filtered_files();
+        let files = self.found_files();
+        let rows = (files.len() as u16).clamp(1, 16);
+        let rect = popup(area, area.width.saturating_sub(8).min(90), rows + 2);
         let block = Block::new()
             .borders(Borders::ALL)
-            .border_style(Style::new().fg(theme.border))
+            .border_style(Style::new().fg(theme.accent))
             .title(Span::styled(
-                format!(
-                    " {} in {} ",
-                    if self.pick_all {
-                        "All files"
-                    } else {
-                        "Markdown"
-                    },
-                    self.root.display()
-                ),
+                format!(" Files · {} of {} ", files.len(), self.files.len()),
                 Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
-            ));
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-        if inner.height < 3 {
-            return;
-        }
-        let prompt = Line::from(vec![
-            Span::styled(" filter ", Style::new().fg(theme.dim)),
-            Span::raw(self.filter.clone()),
-            Span::styled("▏", Style::new().fg(theme.accent)),
-            Span::styled(
-                format!("  {} of {}", files.len(), self.files.len()),
+            ))
+            .title_bottom(Span::styled(
+                " ↑↓ choose · Enter open · Esc close ",
                 Style::new().fg(theme.dim),
-            ),
-        ]);
-        frame.render_widget(
-            Paragraph::new(prompt),
-            Rect::new(inner.x, inner.y, inner.width, 1),
-        );
-        let list_area = Rect::new(inner.x, inner.y + 2, inner.width, inner.height - 2);
+            ));
+        let inner = block.inner(rect);
+        frame.render_widget(Clear, rect);
+        frame.render_widget(block, rect);
         if files.is_empty() {
             let hint = if self.files.is_empty() {
-                "No Markdown files here. Tab lists every file."
+                " No files here."
             } else {
-                "Nothing matches the filter."
+                " Nothing matches."
             };
             frame.render_widget(
-                Paragraph::new(Span::styled(format!(" {hint}"), Style::new().fg(theme.dim))),
-                list_area,
+                Paragraph::new(Span::styled(hint, Style::new().fg(theme.dim))),
+                inner,
             );
             return;
         }
         let items: Vec<ListItem> = files
             .iter()
-            .map(|path| ListItem::new(format!(" {}", path.display())))
+            .map(|path| {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let dir = path
+                    .parent()
+                    .map(|d| d.display().to_string())
+                    .filter(|d| !d.is_empty())
+                    .map(|d| format!("  {d}"))
+                    .unwrap_or_default();
+                ListItem::new(Line::from(vec![
+                    Span::raw(format!(" {name}")),
+                    Span::styled(dir, Style::new().fg(theme.dim)),
+                ]))
+            })
             .collect();
-        let list = List::new(items).highlight_style(
-            Style::new()
-                .fg(theme.bar_fg)
-                .bg(theme.bar_bg)
-                .add_modifier(Modifier::BOLD),
-        );
+        let list = List::new(items)
+            .highlight_style(Style::new().bg(theme.bar_bg).add_modifier(Modifier::BOLD));
         let mut state = ListState::default().with_selected(Some(self.selected));
-        frame.render_stateful_widget(list, list_area, &mut state);
+        frame.render_stateful_widget(list, inner, &mut state);
     }
 
     fn draw_toc(&mut self, frame: &mut Frame, area: Rect) {
@@ -1649,11 +1735,22 @@ impl App {
                 Span::styled(self.query.clone(), bar),
                 Span::styled("▏", bar.fg(theme.accent)),
             ]);
-            buffer.set_line(area.x, area.y, &line, area.width);
+            let hint = if self.file_query().is_some() {
+                " type part of a file name "
+            } else {
+                " text searches this page · @ finds a file "
+            };
+            let hint_width = (hint.width() as u16).min(area.width);
+            buffer.set_line(area.x, area.y, &line, area.width.saturating_sub(hint_width));
+            buffer.set_string(
+                area.x + area.width - hint_width,
+                area.y,
+                hint,
+                bar.fg(theme.dim),
+            );
             return;
         }
         let name = match (&self.doc, self.mode) {
-            (_, Mode::Picker) => "files".to_string(),
             // Relative to the root; a file outside it shows just its name.
             (Some(doc), _) => doc
                 .path
@@ -1677,10 +1774,6 @@ impl App {
             (_, Mode::View) if self.tree_open && self.tree_focus => {
                 " ↑↓ move · ←→ fold · Enter open · b hide ".to_string()
             }
-            (_, Mode::Picker) if self.pick_all => {
-                " ↑↓ move · Enter open · Tab only Markdown · Esc back ".to_string()
-            }
-            (_, Mode::Picker) => " ↑↓ move · Enter open · Tab all files · Esc back ".to_string(),
             (_, Mode::Toc) => " ↑↓ move · Enter go · Esc close ".to_string(),
             (Some(doc), _) => {
                 let total = doc.rendered.lines.len().max(1);
@@ -1731,6 +1824,19 @@ mod tests {
         assert_eq!(heading_source_line(source, 1), Some(7));
         assert_eq!(heading_source_line(source, 2), Some(9));
         assert_eq!(heading_source_line(source, 3), None);
+    }
+
+    #[test]
+    fn file_matches_rank_names_before_paths_before_scattered_letters() {
+        let rank = |path: &str, query: &str| file_rank(Path::new(path), query);
+        assert_eq!(rank("docs/readme.md", "read"), Some(0));
+        assert_eq!(rank("docs/the-readme.md", "readme"), Some(1));
+        assert_eq!(rank("readme/notes.md", "readme"), Some(2));
+        assert_eq!(rank("src/main.rs", "smr"), Some(3));
+        assert_eq!(rank("src/main.rs", "xyz"), None);
+        assert_eq!(rank("Docs/README.md", "readme"), Some(0));
+        // With nothing typed, documents come before other files.
+        assert!(rank("a.md", "") < rank("a.rs", ""));
     }
 
     #[test]

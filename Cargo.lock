@@ -717,7 +717,7 @@ dependencies = [
 
 [[package]]
 name = "fev"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -730,14 +730,14 @@ dependencies = [
 
 [[package]]
 name = "fev-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "pulldown-cmark",
 ]
 
 [[package]]
 name = "fev-render"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "image",
@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "fev-tui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -772,7 +772,7 @@ dependencies = [
 
 [[package]]
 name = "fev-web"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "fev-core",

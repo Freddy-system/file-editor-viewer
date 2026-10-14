@@ -52,9 +52,9 @@ description = "vista previa de Markdown"
 
 | Qué haces | Qué pasa |
 |---|---|
-| Pulsas la tecla configurada | Se abre un panel a la derecha con el `README.md` de la carpeta del panel activo, o un selector de archivos si no hay README |
+| Pulsas la tecla configurada | Se abre un panel a la derecha con el `README.md` de la carpeta del panel activo, o el árbol de archivos si no hay README |
 | Escribes `fev open notas.md` en un panel | Se abre ese archivo en un panel a la derecha |
-| Escribes `fev open` en un panel | Se abre el README de la carpeta actual, o el selector |
+| Escribes `fev open` en un panel | Se abre el README de la carpeta actual, o el árbol de archivos |
 | Seleccionas una ruta `.md` y pulsas la tecla | Se abre ese archivo |
 | Ctrl-clic sobre un enlace a un `.md` local | Se abre ese archivo |
 | `herdr plugin action invoke file-editor-viewer.open-tab` | Lo mismo, en una pestaña nueva |
@@ -68,11 +68,11 @@ description = "vista previa de Markdown"
 | `d` `u`, `Espacio`, `RePág` `AvPág` | Media página / página |
 | `g` `G` | Inicio / final |
 | `/`, `n` `N` | Buscar, coincidencia siguiente / anterior |
+| `/@nombre` | Buscar un archivo por nombre y abrirlo |
 | `Tab`, `Mayús-Tab`, `Enter`, clic | Elegir y seguir enlaces (entre documentos y a títulos) |
 | `Retroceso` | Volver al documento anterior |
 | `t` | Índice del documento |
-| `b` | Árbol de archivos lateral, con todos los archivos |
-| `f` | Selector de archivos; `Tab` alterna entre Markdown y todos |
+| `b` | Árbol de archivos lateral, con todos los archivos; `/` dentro busca un archivo |
 | `e` | Editar el archivo con el editor integrado |
 | Arrastrar con el ratón | Seleccionar texto; al soltar queda copiado |
 | `y`, clic sobre un bloque de código | Copiar el bloque al portapapeles |
@@ -82,6 +82,10 @@ description = "vista previa de Markdown"
 | `c` | Colores claros / oscuros |
 | `?` | Ventana de ayuda con todas las teclas |
 | `r`, `q` | Recargar, salir |
+
+Los atajos con `Alt` funcionan desde cualquier sitio, también dentro del árbol
+o de una búsqueda: `Alt-b` árbol, `Alt-f` buscar archivo, `Alt-t` índice,
+`Alt-e` editar, `Alt-o` abrir en el navegador.
 
 ## Edición
 
@@ -137,7 +141,7 @@ Si `plantuml` o `d2` están instalados, sus bloques de código también se dibuj
 
 ```bash
 fev README.md            # visor de terminal
-fev docs/                # selector de archivos de una carpeta
+fev docs/                # árbol de archivos de una carpeta
 fev serve docs/          # vista previa en el navegador con recarga en vivo
 fev export README.md     # escribe README.html
 ```

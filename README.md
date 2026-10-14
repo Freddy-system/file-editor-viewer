@@ -53,7 +53,7 @@ description = "view or edit files"
 
 | You do | What happens |
 |---|---|
-| Press the key | A pane opens on the right with the `README.md` of the focused pane's directory, or a file picker if there is none |
+| Press the key | A pane opens on the right with the `README.md` of the focused pane's directory, or the file tree if there is none |
 | Select a `.md` path, then press the key | That file opens |
 | Ctrl-click a link to a local `.md` file | That file opens |
 | Run `fev open notes.md` in a pane | That file opens in a pane beside it |
@@ -72,12 +72,12 @@ Press `?` in the viewer for this list.
 | `j` `k` `↑` `↓`, wheel | Scroll |
 | `Space`, `d` `u`, `PgUp` `PgDn` | Page, half page |
 | `g` `G` | Top, bottom |
-| `/`, `n` `N` | Search, next and previous match |
+| `/`, `n` `N` | Search this page, next and previous match |
+| `/@name` | Find a file by name and open it |
 | `Tab`, `Shift-Tab`, `Enter`, click | Select and follow links, across documents and to headings |
 | `Backspace` | Previous document |
 | `t` | Table of contents |
-| `b` | File tree sidebar, with every file |
-| `f` | File picker; `Tab` switches between Markdown and all files |
+| `b` | File tree sidebar, with every file; `/` in it finds a file |
 | `e` | Edit the file (see [Editing](#editing)) |
 | Drag | Select text; it is copied when you release |
 | `y`, click on a code block | Copy the code block |
@@ -86,6 +86,10 @@ Press `?` in the viewer for this list.
 | `i` | Switch image mode (`kitty` / `text`) |
 | `c` | Light or dark colours |
 | `r`, `q` | Reload, quit |
+
+`Alt` shortcuts work from anywhere, including the tree and open prompts:
+`Alt-b` file tree, `Alt-f` find a file, `Alt-t` table of contents, `Alt-e`
+edit, `Alt-o` open in the browser.
 
 ## Editing
 
@@ -153,7 +157,7 @@ Prebuilt binaries are attached to each
 
 ```bash
 fev README.md            # terminal viewer
-fev docs/                # file picker for a directory
+fev docs/                # file tree for a directory
 fev serve docs/          # browser preview with live reload
 fev export README.md     # writes README.html
 ```
